@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from collections import defaultdict
 from dataclasses import dataclass
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any, Iterable
 
 from PIL import Image, ImageEnhance, ImageOps
@@ -122,6 +125,86 @@ def extract_ocr_words_tiled(
         )
 
     return dedupe_ocr_words(words)
+
+
+def extract_windows_ocr_words(image: Image.Image) -> list[OcrWord]:
+    """Run Windows.Media.Ocr over a Pillow image.
+
+    This backend is only available on Windows with the PyWinRT packages installed.
+    """
+
+    try:
+        return asyncio.run(_extract_windows_ocr_words_async(image))
+    except RuntimeError as exc:
+        if "asyncio.run() cannot be called" not in str(exc):
+            raise
+
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(_extract_windows_ocr_words_async(image))
+    finally:
+        loop.close()
+
+
+async def _extract_windows_ocr_words_async(image: Image.Image) -> list[OcrWord]:
+    try:
+        from winrt.windows.graphics.imaging import BitmapDecoder
+        from winrt.windows.media.ocr import OcrEngine
+        from winrt.windows.storage import FileAccessMode, StorageFile
+    except ImportError as exc:
+        raise OcrError(
+            "Windows OCR backend requires PyWinRT packages. Run 'uv sync' on Windows."
+        ) from exc
+
+    with NamedTemporaryFile(suffix=".png", delete=False) as file:
+        temp_path = Path(file.name)
+
+    try:
+        image.convert("RGB").save(temp_path)
+        storage_file = await StorageFile.get_file_from_path_async(str(temp_path))
+        stream = await storage_file.open_async(FileAccessMode.READ)
+        decoder = await BitmapDecoder.create_async(stream)
+        bitmap = await decoder.get_software_bitmap_async()
+        engine = OcrEngine.try_create_from_user_profile_languages()
+        if engine is None:
+            raise OcrError("Windows OCR could not create an OCR engine for user languages.")
+        result = await engine.recognize_async(bitmap)
+        return windows_ocr_result_to_words(result)
+    except OcrError:
+        raise
+    except Exception as exc:
+        raise OcrError(f"Windows OCR failed: {exc}") from exc
+    finally:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def windows_ocr_result_to_words(result: Any) -> list[OcrWord]:
+    words: list[OcrWord] = []
+    for line_index, line in enumerate(result.lines, start=1):
+        for word_index, word in enumerate(line.words, start=1):
+            text = str(word.text).strip()
+            if not text:
+                continue
+            rect = word.bounding_rect
+            x1 = round(rect.x)
+            y1 = round(rect.y)
+            x2 = round(rect.x + rect.width)
+            y2 = round(rect.y + rect.height)
+            words.append(
+                OcrWord(
+                    text=text,
+                    confidence=100,
+                    box=Box(x1, y1, x2, y2, text),
+                    block_num=line_index,
+                    par_num=1,
+                    line_num=line_index,
+                    word_num=word_index,
+                )
+            )
+    return words
 
 
 def iter_ocr_tiles(

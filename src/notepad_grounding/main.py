@@ -24,6 +24,7 @@ from notepad_grounding.grounding.ocr import (
     extract_ocr_lines,
     extract_ocr_words_tiled,
     extract_ocr_words,
+    extract_windows_ocr_words,
     group_words_by_line,
 )
 
@@ -157,10 +158,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Overlay raw word boxes in addition to grouped text boxes.",
     )
     ocr.add_argument(
+        "--ocr-engine",
+        choices=("windows", "tesseract"),
+        default="windows",
+        help="OCR backend to use. Windows OCR is preferred for GUI text.",
+    )
+    ocr.add_argument(
         "--ocr-mode",
         choices=("tiled", "full"),
         default="tiled",
-        help="Use tiled OCR for small desktop labels or full-screen OCR for comparison.",
+        help="Tesseract-only mode: tiled OCR for small labels or full-screen OCR for comparison.",
     )
     ocr.add_argument(
         "--tile-size",
@@ -377,7 +384,9 @@ def run_ocr_proof(args: argparse.Namespace) -> int:
     size_status = "ok" if actual_size == expected_size else "mismatch"
 
     try:
-        if args.ocr_mode == "tiled":
+        if args.ocr_engine == "windows":
+            words = extract_windows_ocr_words(screenshot)
+        elif args.ocr_mode == "tiled":
             words = extract_ocr_words_tiled(
                 screenshot,
                 min_confidence=args.min_confidence,
@@ -410,6 +419,7 @@ def run_ocr_proof(args: argparse.Namespace) -> int:
         f"size_status={size_status}",
         f"ocr_words={len(words)}",
         f"ocr_groups={len(lines)}",
+        f"ocr_engine={args.ocr_engine}",
         f"ocr_mode={args.ocr_mode}",
         f"draw_words={args.draw_words}",
     ]
@@ -427,6 +437,7 @@ def run_ocr_proof(args: argparse.Namespace) -> int:
     print(f"captured_size={actual_size[0]}x{actual_size[1]}")
     print(f"ocr_words={len(words)}")
     print(f"ocr_groups={len(lines)}")
+    print(f"ocr_engine={args.ocr_engine}")
     print(f"ocr_mode={args.ocr_mode}")
     for index, line in enumerate(lines, start=1):
         print(

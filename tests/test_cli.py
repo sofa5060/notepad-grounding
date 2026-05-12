@@ -24,6 +24,7 @@ def test_ocr_proof_help_exposes_grouping_controls(capsys):
     assert exc.value.code == 0
     help_text = capsys.readouterr().out
     assert "--draw-words" in help_text
+    assert "--ocr-engine" in help_text
     assert "--ocr-mode" in help_text
     assert "--tile-size" in help_text
     assert "--tile-overlap" in help_text

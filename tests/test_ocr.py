@@ -6,6 +6,7 @@ from notepad_grounding.grounding.ocr import (
     group_words_by_line,
     iter_ocr_tiles,
     offset_ocr_words,
+    windows_ocr_result_to_words,
 )
 
 
@@ -129,3 +130,38 @@ def test_dedupe_ocr_words_keeps_highest_confidence_duplicate():
 
     assert [word.text for word in deduped] == ["Notepad", "Steam"]
     assert deduped[0].confidence == 94
+
+
+def test_windows_ocr_result_to_words_maps_lines_and_bounding_rects():
+    class Rect:
+        def __init__(self, x, y, width, height):
+            self.x = x
+            self.y = y
+            self.width = width
+            self.height = height
+
+    class Word:
+        def __init__(self, text, rect):
+            self.text = text
+            self.bounding_rect = rect
+
+    class Line:
+        def __init__(self, words):
+            self.words = words
+
+    class Result:
+        lines = [
+            Line(
+                [
+                    Word("Note", Rect(700, 450, 30, 14)),
+                    Word("pad", Rect(732, 450, 20, 14)),
+                ]
+            )
+        ]
+
+    words = windows_ocr_result_to_words(Result())
+
+    assert words == [
+        OcrWord("Note", 100, Box(700, 450, 730, 464, "Note"), 1, 1, 1, 1),
+        OcrWord("pad", 100, Box(732, 450, 752, 464, "pad"), 1, 1, 1, 2),
+    ]

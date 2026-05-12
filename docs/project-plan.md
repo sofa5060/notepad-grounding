@@ -75,9 +75,17 @@ tests/
 - Infer icon boxes above labels.
 - Save annotated candidate screenshot.
 
+### 3.5. Desktop Inventory Label Prior
+- Query the Windows Desktop directory to list visible/likely desktop item names.
+- Use those names as expected label priors when interpreting OCR output.
+- Match noisy OCR text such as `otepad` or `Note pad` against known desktop names such as `Notepad`.
+- Do not use filesystem inventory for coordinates; click positions must still come from screenshot-derived boxes.
+- Treat inventory as supporting evidence for OCR cleanup and candidate scoring, not as a replacement for visual grounding.
+
 ### 4. Deterministic Scoring
 - Add fuzzy label scoring for `Notepad`.
 - Add geometry scoring.
+- Add optional desktop-inventory label prior scoring when available.
 - Select best candidate and return center coordinate.
 
 ### 5. Template Similarity

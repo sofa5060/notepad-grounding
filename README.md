@@ -76,12 +76,12 @@ Before grouping labels with icons, use the OCR-only proof to inspect text detect
 uv run notepad-grounding ocr-proof --out-dir output/debug --strict-size --tesseract-cmd "C:\Program Files\Tesseract-OCR\tesseract.exe"
 ```
 
-`ocr-proof` uses tiled OCR by default so small desktop labels are read from smaller crops instead of one huge screenshot. The defaults are `--tile-size 360 --tile-overlap 80`.
+`ocr-proof` uses Windows OCR by default because it is designed for UI text and avoids the Tesseract installer. Tesseract remains available for comparison with `--ocr-engine tesseract`.
 
 To replay a saved screenshot:
 
 ```powershell
-uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --strict-size --tesseract-cmd "C:\Program Files\Tesseract-OCR\tesseract.exe"
+uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --strict-size
 ```
 
 Expected OCR output:
@@ -93,7 +93,7 @@ output/debug/<timestamp>-desktop-ocr.png
 The OCR proof image draws grouped text boxes in green. Add `--draw-words` to also draw raw Tesseract word boxes in orange:
 
 ```powershell
-uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --draw-words --tesseract-cmd "C:\Program Files\Tesseract-OCR\tesseract.exe"
+uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --draw-words
 ```
 
 If nearby labels are being merged incorrectly, tune grouping without changing code:
@@ -102,16 +102,16 @@ If nearby labels are being merged incorrectly, tune grouping without changing co
 uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --max-horizontal-gap 12 --max-vertical-gap 4
 ```
 
-To compare tiled OCR with the older full-screen OCR behavior:
+To compare against Tesseract tiled OCR:
 
 ```powershell
-uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --ocr-mode full --draw-words --tesseract-cmd "C:\Program Files\Tesseract-OCR\tesseract.exe"
+uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --ocr-engine tesseract --ocr-mode tiled --draw-words --tesseract-cmd "C:\Program Files\Tesseract-OCR\tesseract.exe"
 ```
 
-To tune tile size:
+To compare against Tesseract full-screen OCR:
 
 ```powershell
-uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --tile-size 300 --tile-overlap 80 --draw-words --tesseract-cmd "C:\Program Files\Tesseract-OCR\tesseract.exe"
+uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --ocr-engine tesseract --ocr-mode full --draw-words --tesseract-cmd "C:\Program Files\Tesseract-OCR\tesseract.exe"
 ```
 
 Run this inside the Windows VM with the desktop visible:

@@ -48,6 +48,17 @@ The first detector should:
 
 Use overlapping tiles if full-screen OCR performs poorly. Avoid hard tile boundaries without overlap because labels may be split across tiles.
 
+## Desktop Inventory Label Prior
+Because the automation runs on the target Windows desktop, the app can later query the Desktop directory and collect known item names before interpreting OCR results.
+
+This should be used as a **label prior**, not as a coordinate source:
+- filesystem/Desktop inventory can tell us likely labels such as `Notepad`;
+- OCR can tell us where text-like regions appear in the screenshot;
+- fuzzy matching can connect noisy OCR strings such as `otepad`, `Note pad`, or truncated labels to known desktop item names;
+- final click coordinates must still come from screenshot-derived candidate boxes.
+
+This helps reduce false positives from OCR noise while preserving the assignment's visual-grounding requirement.
+
 ## Scoring Plan
 Each candidate should collect evidence:
 
@@ -68,6 +79,7 @@ Examples:
 - `Notepad` -> high confidence
 - `notepad` -> high confidence
 - `Note pad` -> medium/high confidence
+- OCR text that fuzzy-matches a known Desktop item name -> boosted confidence
 - `Notepad++` -> suspicious, not exact target
 - unrelated labels -> low confidence
 
