@@ -126,6 +126,7 @@ The assignment lists explicit discussion topics. We should design the system to 
 | **Scaling to any icon** | Query-based: same pipeline works for any text label |
 | **Scaling to any resolution** | Grid inference adapts to any screen size |
 | **What would you do differently** | Train a small YOLO/CNN on synthetic desktop icons for faster detection |
+| **MLLM for OCR** | Instead of traditional OCR, use GPT-4o/Claude to read text from screenshot crops. More robust for small/shadowed text but slower and API-dependent |
 
 ## Current Status vs. Target
 
@@ -135,9 +136,9 @@ The assignment lists explicit discussion topics. We should design the system to 
 | Basic OCR (Tesseract + Windows) | ✅ Done | ✅ Done |
 | Word grouping | ✅ Done | ✅ Done |
 | Candidate inference (icon above label) | ✅ Done | ✅ Done |
-| **Text-specific preprocessing** | ❌ Missing | **Priority 1** |
-| **Desktop inventory prior** | ❌ Missing | **Priority 2** |
-| **Grid inference** | ❌ Missing | **Priority 3** |
+| **Text-specific preprocessing** | ❌ Rejected — destroyed text for Windows OCR | **Replaced by raw image** |
+| **Desktop inventory prior** | ❌ Missing | **Priority 1** |
+| **Grid inference** | ❌ Missing | **Priority 2** |
 | Scoring | ❌ Empty | Priority 4 |
 | Automation (click, type, save) | ❌ Empty | Priority 5 |
 | MLLM verifier | ❌ Empty | Optional |
