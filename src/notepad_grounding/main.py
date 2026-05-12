@@ -403,19 +403,22 @@ def run_ocr_proof(args: argparse.Namespace) -> int:
     expected_size = (args.expected_width, args.expected_height)
     size_status = "ok" if actual_size == expected_size else "mismatch"
 
+    # Preprocess image for OCR
+    if args.preprocess_mode == "desktop_label":
+        # Windows OCR works well at original size; upscaling is mainly for Tesseract
+        ocr_input_image = prepare_desktop_label_image(screenshot, upscale_factor=1)
+    else:
+        ocr_input_image = prepare_image_for_ocr(screenshot, upscale_factor=1)
+
     # Save preprocessed debug image if requested
     if args.save_preprocessed:
-        if args.preprocess_mode == "desktop_label":
-            preprocessed = prepare_desktop_label_image(screenshot, upscale_factor=3)
-        else:
-            preprocessed = prepare_image_for_ocr(screenshot, upscale_factor=2)
         preprocessed_path = args.out_dir / f"{timestamp}-desktop-preprocessed.png"
-        preprocessed.save(preprocessed_path)
+        ocr_input_image.save(preprocessed_path)
         print(f"preprocessed_screenshot={preprocessed_path}")
 
     try:
         if args.ocr_engine == "windows":
-            words = extract_windows_ocr_words(screenshot)
+            words = extract_windows_ocr_words(ocr_input_image)
         elif args.ocr_mode == "tiled":
             words = extract_ocr_words_tiled(
                 screenshot,
@@ -426,11 +429,17 @@ def run_ocr_proof(args: argparse.Namespace) -> int:
                 preprocess_mode=args.preprocess_mode,
             )
         else:
+            # For Tesseract full-screen, use upscaled preprocessing for better accuracy
+            if args.preprocess_mode == "desktop_label":
+                tesseract_input = prepare_desktop_label_image(screenshot, upscale_factor=3)
+            else:
+                tesseract_input = prepare_image_for_ocr(screenshot, upscale_factor=2)
             words = extract_ocr_words(
-                screenshot,
+                tesseract_input,
                 min_confidence=args.min_confidence,
                 tesseract_cmd=args.tesseract_cmd,
-                preprocess_mode=args.preprocess_mode,
+                preprocess_mode="standard",  # Already preprocessed
+                upscale_factor=1,
             )
     except OcrError as exc:
         print(f"error: {exc}")
