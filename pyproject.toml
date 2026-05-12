@@ -13,6 +13,7 @@ dependencies = [
     "winrt-Windows.Graphics.Imaging>=3.2.1; platform_system == 'Windows'",
     "winrt-Windows.Media.Ocr>=3.2.1; platform_system == 'Windows'",
     "winrt-Windows.Storage>=3.2.1; platform_system == 'Windows'",
+    "winrt-Windows.Storage.Streams>=3.2.1; platform_system == 'Windows'",
 ]
 
 [project.scripts]
