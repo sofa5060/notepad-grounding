@@ -163,6 +163,38 @@ def extract_windows_ocr_words(image: Image.Image) -> list[OcrWord]:
         loop.close()
 
 
+def extract_windows_ocr_words_tiled(
+    image: Image.Image,
+    *,
+    tile_size: int = 400,
+    overlap: int = 50,
+) -> list[OcrWord]:
+    """Run Windows OCR over overlapping crops for focused detection.
+
+    Windows OCR works well on raw screenshots but may pick up UI text from
+    open windows. Tiling into smaller crops helps localize detection and
+    reduces false positives from large windowed applications.
+    """
+
+    words: list[OcrWord] = []
+    for tile_index, tile in enumerate(
+        iter_ocr_tiles(width=image.width, height=image.height, tile_size=tile_size, overlap=overlap),
+        start=1,
+    ):
+        crop = image.crop((tile.x1, tile.y1, tile.x2, tile.y2))
+        tile_words = extract_windows_ocr_words(crop)
+        words.extend(
+            offset_ocr_words(
+                tile_words,
+                offset_x=tile.x1,
+                offset_y=tile.y1,
+                group_offset=tile_index * 1000,
+            )
+        )
+
+    return dedupe_ocr_words(words, iou_threshold=0.35)
+
+
 async def _extract_windows_ocr_words_async(image: Image.Image) -> list[OcrWord]:
     try:
         from winrt.windows.graphics.imaging import BitmapDecoder

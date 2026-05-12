@@ -25,6 +25,7 @@ from notepad_grounding.grounding.ocr import (
     extract_ocr_words_tiled,
     extract_ocr_words,
     extract_windows_ocr_words,
+    extract_windows_ocr_words_tiled,
     group_words_by_line,
     prepare_desktop_label_image,
     prepare_image_for_ocr,
@@ -175,29 +176,29 @@ def build_parser() -> argparse.ArgumentParser:
         "--ocr-mode",
         choices=("tiled", "full"),
         default="tiled",
-        help="Tesseract-only mode: tiled OCR for small labels or full-screen OCR for comparison.",
+        help="Tiled or full-screen OCR mode. Tiled is recommended for focused detection.",
     )
     ocr.add_argument(
         "--preprocess-mode",
         choices=("desktop_label", "standard"),
         default="desktop_label",
-        help="OCR preprocessing mode. 'desktop_label' is optimized for icon text.",
+        help="OCR preprocessing mode. Only affects Tesseract. Windows OCR uses raw image.",
     )
     ocr.add_argument(
         "--save-preprocessed",
         action="store_true",
-        help="Save the preprocessed image that is fed to the OCR engine for debugging.",
+        help="Save the preprocessed image that is fed to Tesseract for debugging.",
     )
     ocr.add_argument(
         "--tile-size",
         type=int,
-        default=360,
+        default=400,
         help="Tile width and height for tiled OCR mode.",
     )
     ocr.add_argument(
         "--tile-overlap",
         type=int,
-        default=80,
+        default=50,
         help="Overlap in pixels between adjacent OCR tiles.",
     )
     ocr.add_argument(
@@ -403,22 +404,27 @@ def run_ocr_proof(args: argparse.Namespace) -> int:
     expected_size = (args.expected_width, args.expected_height)
     size_status = "ok" if actual_size == expected_size else "mismatch"
 
-    # Preprocess image for OCR
-    if args.preprocess_mode == "desktop_label":
-        # Windows OCR works well at original size; upscaling is mainly for Tesseract
-        ocr_input_image = prepare_desktop_label_image(screenshot, upscale_factor=1)
-    else:
-        ocr_input_image = prepare_image_for_ocr(screenshot, upscale_factor=1)
-
-    # Save preprocessed debug image if requested
-    if args.save_preprocessed:
+    # Save preprocessed debug image for Tesseract if requested
+    if args.save_preprocessed and args.ocr_engine == "tesseract":
+        if args.preprocess_mode == "desktop_label":
+            preprocessed = prepare_desktop_label_image(screenshot, upscale_factor=3)
+        else:
+            preprocessed = prepare_image_for_ocr(screenshot, upscale_factor=2)
         preprocessed_path = args.out_dir / f"{timestamp}-desktop-preprocessed.png"
-        ocr_input_image.save(preprocessed_path)
+        preprocessed.save(preprocessed_path)
         print(f"preprocessed_screenshot={preprocessed_path}")
 
     try:
         if args.ocr_engine == "windows":
-            words = extract_windows_ocr_words(ocr_input_image)
+            # Windows OCR works best on raw images; do NOT preprocess
+            if args.ocr_mode == "tiled":
+                words = extract_windows_ocr_words_tiled(
+                    screenshot,
+                    tile_size=args.tile_size,
+                    overlap=args.tile_overlap,
+                )
+            else:
+                words = extract_windows_ocr_words(screenshot)
         elif args.ocr_mode == "tiled":
             words = extract_ocr_words_tiled(
                 screenshot,
@@ -429,7 +435,7 @@ def run_ocr_proof(args: argparse.Namespace) -> int:
                 preprocess_mode=args.preprocess_mode,
             )
         else:
-            # For Tesseract full-screen, use upscaled preprocessing for better accuracy
+            # Tesseract full-screen: preprocess then OCR
             if args.preprocess_mode == "desktop_label":
                 tesseract_input = prepare_desktop_label_image(screenshot, upscale_factor=3)
             else:
