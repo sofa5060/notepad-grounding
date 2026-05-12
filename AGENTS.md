@@ -39,14 +39,28 @@ uv run notepad-grounding locate --query Notepad --out-dir output/debug
 Current deterministic flow:
 
 1. Capture or load a screenshot.
-2. Run Windows OCR.
-3. Group visible text into labels.
-4. Infer candidate icon boxes above plausible labels.
-5. Score candidates with fuzzy query matching.
-6. Return the selected candidate center.
-7. Save debug images for grid, OCR labels, candidates, and selected center.
+2. Split the screenshot into overlapping OCR tiles.
+3. Upscale each tile and run Windows OCR.
+4. Map tile-local OCR boxes back to original screen coordinates.
+5. Deduplicate overlapping detections and group visible text into labels, including vertically wrapped desktop icon labels.
+6. Infer candidate icon boxes above plausible labels.
+7. Score candidates with fuzzy query matching.
+8. Return the selected candidate center.
+9. Save debug images for grid, OCR labels, candidates, and selected center.
 
-Grid overlays are for debugging and future scoring priors. Do not assume Windows desktop icons are always locked to the grid; Auto Arrange and Align to Grid are user-controlled settings, and icon sizes can change.
+Grid OCR must use overlap so icons and labels on cell boundaries are not split out of detection. The visible grid overlay must draw the same overlapping tile boxes used for OCR.
+
+Keep the default VM command simple:
+
+```text
+uv run notepad-grounding locate --query Notepad --out-dir output/debug
+```
+
+Advanced OCR tuning flags may exist, but keep them hidden from normal help/docs unless the user asks how to tune a specific failure.
+
+Do not assume Windows desktop icons are always locked to the grid; Auto Arrange and Align to Grid are user-controlled settings, and icon sizes can change.
+
+Windows OCR should receive an upscaled screenshot by default. Preserve coordinate correctness by mapping OCR boxes back to original screen coordinates before candidate inference.
 
 ## Debugging Expectations
 

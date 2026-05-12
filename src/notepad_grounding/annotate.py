@@ -6,19 +6,21 @@ from typing import Iterable
 from PIL import Image, ImageDraw, ImageFont
 
 from notepad_grounding.grounding import Candidate
-from notepad_grounding.grounding import GridCell
 from notepad_grounding.ocr import Box
 from notepad_grounding.ocr import OcrLine
 
 
-def draw_grid(image: Image.Image, grid: Iterable[GridCell], output_path: Path) -> Path:
+def draw_grid(image: Image.Image, grid: Iterable[object], output_path: Path) -> Path:
     annotated = image.convert("RGB").copy()
     draw = ImageDraw.Draw(annotated)
     font = ImageFont.load_default()
     for cell in grid:
-        draw.rectangle(cell.box, outline=(190, 190, 190), width=1)
-        if cell.row % 2 == 0 and cell.col % 4 == 0:
-            draw.text((cell.box[0] + 3, cell.box[1] + 3), f"{cell.row},{cell.col}", fill=(90, 90, 90), font=font)
+        box = getattr(cell, "box")
+        row = getattr(cell, "row")
+        col = getattr(cell, "col")
+        draw.rectangle(box, outline=(190, 190, 190), width=1)
+        if row % 2 == 0 and col % 4 == 0:
+            draw.text((box[0] + 3, box[1] + 3), f"{row},{col}", fill=(90, 90, 90), font=font)
     return _save(annotated, output_path)
 
 

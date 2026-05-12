@@ -52,30 +52,35 @@ uv run notepad-grounding locate --query Notepad --image output/debug/screen.png 
 The command writes:
 
 - `<timestamp>-raw.png`: live screenshot, only when no `--image` is supplied
-- `<timestamp>-grid.png`: visible grid overlay for debugging cell size
+- `<timestamp>-grid.png`: overlapping OCR tile boxes used by the detector
 - `<timestamp>-ocr.png`: OCR label boxes
 - `<timestamp>-candidates.png`: inferred icon candidates, scores, and selected center
 - `<timestamp>-result.json`: query, screen size, grid settings, selected candidate, and center coordinate
 
-Tune the debug grid without changing code:
+The default path already upscales each OCR tile before Windows OCR, then maps detected boxes back to real screen coordinates. This is useful for small or low-contrast labels.
 
-```powershell
-uv run notepad-grounding locate --query Notepad --cell-width 80 --cell-height 92
-```
+The overlap is important. It lets labels/icons that sit on a tile boundary appear fully inside at least one neighboring crop, then the OCR boxes are mapped back to screen coordinates and merged.
+
+Advanced OCR tuning flags exist, but they are intentionally hidden from normal help so the VM test command stays simple. Tune them only when a debug image shows a specific failure.
 
 ## Current Approach
 
 The first implementation is deterministic:
 
 1. Capture or load a screenshot.
-2. Run Windows OCR on the screenshot.
-3. Group text into visible labels.
-4. Infer an icon box above each plausible label.
-5. Score candidates with fuzzy label matching against the query.
-6. Return the center of the best candidate if its score is high enough.
-7. Save debug images for every step.
+2. Split the screenshot into overlapping OCR tiles.
+3. Upscale each tile for Windows OCR.
+4. Map tile-local OCR boxes back to screen coordinates.
+5. Deduplicate overlapping tile detections.
+6. Group text into visible labels, including vertically wrapped icon names and close inline fragments from neighboring tiles.
+7. Infer an icon box above each plausible label.
+8. Score candidates with fuzzy label matching against the query.
+9. Return the center of the best candidate if its score is high enough.
+10. Save debug images for every step.
 
-The grid is a visual debugging aid and a future prior. It is not treated as a guarantee because Windows allows manual icon placement; Auto Arrange and icon size are user settings.
+The visible grid image draws the same overlapping tile grid used by OCR, so grid boundaries in `grid.png` show the real OCR crops.
+
+The grid is not treated as a guarantee because Windows allows manual icon placement; Auto Arrange and icon size are user settings.
 
 ## Why No LLM Yet
 
@@ -93,6 +98,7 @@ uv run notepad-grounding --help
 ## Next Milestones
 
 1. Validate `locate --query Notepad` on Windows with the icon in top-left, center, and bottom-right positions.
-2. Use the grid/OCR/candidate images to tune default cell size and candidate geometry.
-3. Add a small optional ScreenSeekeR-lite experiment: planner suggests regions, deterministic code still returns coordinates.
-4. Add Notepad launch/save automation only after location proof is reliable.
+2. Use the grid/OCR/candidate images to inspect OCR tile coverage and candidate geometry.
+3. Tune default OCR tile size/overlap in code only if the three required Windows screenshots show a repeatable failure.
+4. Add a small optional ScreenSeekeR-lite experiment: planner suggests regions, deterministic code still returns coordinates.
+5. Add Notepad launch/save automation only after location proof is reliable.

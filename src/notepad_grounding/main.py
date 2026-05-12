@@ -12,11 +12,11 @@ from notepad_grounding.annotate import draw_ocr
 from notepad_grounding.capture import CaptureError
 from notepad_grounding.capture import capture_desktop
 from notepad_grounding.capture import load_image
-from notepad_grounding.grounding import build_grid
 from notepad_grounding.grounding import infer_candidates
 from notepad_grounding.grounding import locate_from_lines
 from notepad_grounding.ocr import OcrError
 from notepad_grounding.ocr import extract_windows_ocr_lines
+from notepad_grounding.ocr import iter_ocr_tiles
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -39,9 +39,22 @@ def build_parser() -> argparse.ArgumentParser:
     locate.add_argument("--query", required=True, help="Visible target label, for example Notepad.")
     locate.add_argument("--image", type=Path, default=None, help="Replay an existing screenshot instead of capturing.")
     locate.add_argument("--out-dir", type=Path, default=Path("output/debug"), help="Debug output directory.")
-    locate.add_argument("--cell-width", type=int, default=96, help="Debug grid cell width.")
-    locate.add_argument("--cell-height", type=int, default=96, help="Debug grid cell height.")
-    locate.add_argument("--taskbar-height", type=int, default=48, help="Bottom taskbar exclusion height.")
+    locate.add_argument("--taskbar-height", type=int, default=48, help=argparse.SUPPRESS)
+    locate.add_argument(
+        "--ocr-mode",
+        choices=("grid", "full"),
+        default="grid",
+        help=argparse.SUPPRESS,
+    )
+    locate.add_argument(
+        "--ocr-scale",
+        type=int,
+        default=2,
+        help=argparse.SUPPRESS,
+    )
+    locate.add_argument("--ocr-tile-width", type=int, default=320, help=argparse.SUPPRESS)
+    locate.add_argument("--ocr-tile-height", type=int, default=240, help=argparse.SUPPRESS)
+    locate.add_argument("--ocr-tile-overlap", type=int, default=48, help=argparse.SUPPRESS)
     locate.add_argument("--allow-non-windows", action="store_true", help="Allow live capture outside Windows.")
     return parser
 
@@ -63,23 +76,29 @@ def run_locate(args: argparse.Namespace) -> int:
         return 2
 
     try:
-        lines = extract_windows_ocr_lines(image)
+        lines = extract_windows_ocr_lines(
+            image,
+            mode=args.ocr_mode,
+            scale=args.ocr_scale,
+            tile_width=args.ocr_tile_width,
+            tile_height=args.ocr_tile_height,
+            overlap=args.ocr_tile_overlap,
+        )
     except OcrError as exc:
         print(f"error: {exc}")
         return 3
 
-    grid = build_grid(
-        image.size,
-        cell_width=args.cell_width,
-        cell_height=args.cell_height,
-        taskbar_height=args.taskbar_height,
+    grid = iter_ocr_tiles(
+        width=image.width,
+        height=max(0, image.height - args.taskbar_height),
+        tile_width=args.ocr_tile_width,
+        tile_height=args.ocr_tile_height,
+        overlap=args.ocr_tile_overlap,
     )
     result = locate_from_lines(
         lines,
         screen_size=image.size,
         query=args.query,
-        cell_width=args.cell_width,
-        cell_height=args.cell_height,
         taskbar_height=args.taskbar_height,
     )
     candidates = result.candidates if result else infer_candidates(
@@ -104,12 +123,21 @@ def run_locate(args: argparse.Namespace) -> int:
         "source": str(source_path),
         "screen_size": list(image.size),
         "grid": {
-            "cell_width": args.cell_width,
-            "cell_height": args.cell_height,
+            "type": "overlapping_ocr_tiles",
+            "tile_width": args.ocr_tile_width,
+            "tile_height": args.ocr_tile_height,
+            "tile_overlap": args.ocr_tile_overlap,
             "taskbar_height": args.taskbar_height,
             "cell_count": len(grid),
         },
         "ocr_line_count": len(lines),
+        "ocr_mode": args.ocr_mode,
+        "ocr_scale": args.ocr_scale,
+        "ocr_tile": {
+            "width": args.ocr_tile_width,
+            "height": args.ocr_tile_height,
+            "overlap": args.ocr_tile_overlap,
+        },
         "found": result is not None,
         "center": list(result.center) if result else None,
         "selected_candidate": asdict(result.candidate) if result else None,
