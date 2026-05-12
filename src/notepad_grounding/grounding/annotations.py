@@ -101,6 +101,39 @@ def annotate_candidate_proof(
     return output_path
 
 
+def annotate_ocr_proof(
+    image: Image.Image,
+    *,
+    words: Iterable[object],
+    lines: Iterable[object],
+    output_path: Path,
+    draw_words: bool = False,
+    title: str | None = "OCR text proof",
+    notes: Iterable[str] = (),
+) -> Path:
+    annotated = image.convert("RGB").copy()
+    draw = ImageDraw.Draw(annotated)
+    font = ImageFont.load_default()
+
+    orange = (255, 150, 0)
+    green = (0, 180, 80)
+
+    if draw_words:
+        for word in words:
+            _draw_box(draw, getattr(word, "box"), orange, getattr(word, "text"), font)
+
+    for index, line in enumerate(lines, start=1):
+        text = getattr(line, "text")
+        _draw_box(draw, getattr(line, "box"), green, f"#{index} {text}", font)
+
+    if title or notes:
+        _draw_metadata(draw, title=title, notes=list(notes), font=font)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    annotated.save(output_path)
+    return output_path
+
+
 def _clamp_box(box: Box, width: int, height: int) -> tuple[int, int, int, int]:
     max_x = max(width - 1, 0)
     max_y = max(height - 1, 0)

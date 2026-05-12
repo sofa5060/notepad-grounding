@@ -70,6 +70,36 @@ If the capture is not `1920x1080`, the command exits non-zero in strict mode.
 
 ## Candidate Proof
 
+Before grouping labels with icons, use the OCR-only proof to inspect text detection and grouping:
+
+```powershell
+uv run notepad-grounding ocr-proof --out-dir output/debug --strict-size --tesseract-cmd "C:\Program Files\Tesseract-OCR\tesseract.exe"
+```
+
+To replay a saved screenshot:
+
+```powershell
+uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --strict-size --tesseract-cmd "C:\Program Files\Tesseract-OCR\tesseract.exe"
+```
+
+Expected OCR output:
+
+```text
+output/debug/<timestamp>-desktop-ocr.png
+```
+
+The OCR proof image draws grouped text boxes in green. Add `--draw-words` to also draw raw Tesseract word boxes in orange:
+
+```powershell
+uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --draw-words --tesseract-cmd "C:\Program Files\Tesseract-OCR\tesseract.exe"
+```
+
+If nearby labels are being merged incorrectly, tune grouping without changing code:
+
+```powershell
+uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --max-horizontal-gap 12 --max-vertical-gap 4
+```
+
 Run this inside the Windows VM with the desktop visible:
 
 ```powershell

@@ -41,6 +41,24 @@ def extract_ocr_lines(
 ) -> list[OcrLine]:
     """Run Tesseract OCR and return grouped desktop-label-like text lines."""
 
+    words = extract_ocr_words(
+        image,
+        min_confidence=min_confidence,
+        tesseract_cmd=tesseract_cmd,
+        upscale_factor=upscale_factor,
+    )
+    return group_words_by_line(words)
+
+
+def extract_ocr_words(
+    image: Image.Image,
+    *,
+    min_confidence: float = 50,
+    tesseract_cmd: str | None = None,
+    upscale_factor: int = 2,
+) -> list[OcrWord]:
+    """Run Tesseract OCR and return raw word boxes in screenshot coordinates."""
+
     try:
         import pytesseract
         from pytesseract import Output
@@ -61,15 +79,14 @@ def extract_ocr_lines(
     except Exception as exc:
         raise OcrError(
             "Tesseract OCR failed. Install Tesseract in Windows or pass "
-            "--tesseract-cmd with the executable path."
+            f"--tesseract-cmd with the executable path. Details: {exc}"
         ) from exc
 
-    words = extract_words_from_tesseract_data(
+    return extract_words_from_tesseract_data(
         data,
         min_confidence=min_confidence,
         coordinate_scale=upscale_factor,
     )
-    return group_words_by_line(words)
 
 
 def prepare_image_for_ocr(image: Image.Image, *, upscale_factor: int = 2) -> Image.Image:

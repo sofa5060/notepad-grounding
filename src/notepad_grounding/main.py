@@ -13,12 +13,18 @@ from notepad_grounding.automation.desktop import (
 )
 from notepad_grounding.config import DEFAULT_OUTPUT_DIR, EXPECTED_SCREEN_SIZE
 from notepad_grounding.grounding.annotations import annotate_candidate_proof
+from notepad_grounding.grounding.annotations import annotate_ocr_proof
 from notepad_grounding.grounding.annotations import (
     annotate_screenshot,
     default_reference_boxes,
 )
 from notepad_grounding.grounding.candidates import infer_icon_candidates
-from notepad_grounding.grounding.ocr import OcrError, extract_ocr_lines
+from notepad_grounding.grounding.ocr import (
+    OcrError,
+    extract_ocr_lines,
+    extract_ocr_words,
+    group_words_by_line,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -29,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_screenshot_proof(args)
     if args.command == "candidate-proof":
         return run_candidate_proof(args)
+    if args.command == "ocr-proof":
+        return run_ocr_proof(args)
 
     parser.print_help()
     return 0
@@ -125,7 +133,89 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional path to the Tesseract executable.",
     )
 
+    ocr = subparsers.add_parser(
+        "ocr-proof",
+        help="Run OCR and save an annotated text-only proof screenshot.",
+    )
+    _add_image_source_arguments(ocr, output_help="Directory for OCR proof outputs.")
+    ocr.add_argument(
+        "--min-confidence",
+        type=float,
+        default=50,
+        help="Minimum Tesseract word confidence to keep.",
+    )
+    ocr.add_argument(
+        "--tesseract-cmd",
+        type=str,
+        default=None,
+        help="Optional path to the Tesseract executable.",
+    )
+    ocr.add_argument(
+        "--draw-words",
+        action="store_true",
+        help="Overlay raw word boxes in addition to grouped text boxes.",
+    )
+    ocr.add_argument(
+        "--max-horizontal-gap",
+        type=int,
+        default=48,
+        help="Maximum horizontal gap for combining OCR words on one line.",
+    )
+    ocr.add_argument(
+        "--max-vertical-gap",
+        type=int,
+        default=6,
+        help="Maximum vertical gap for merging wrapped desktop-label lines.",
+    )
+    ocr.add_argument(
+        "--max-center-delta",
+        type=int,
+        default=48,
+        help="Maximum center-x delta for merging wrapped desktop-label lines.",
+    )
+
     return parser
+
+
+def _add_image_source_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    output_help: str,
+) -> None:
+    parser.add_argument(
+        "--image",
+        type=Path,
+        default=None,
+        help="Existing screenshot to replay instead of capturing the live desktop.",
+    )
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=DEFAULT_OUTPUT_DIR,
+        help=output_help,
+    )
+    parser.add_argument(
+        "--expected-width",
+        type=int,
+        default=EXPECTED_SCREEN_SIZE[0],
+        help="Expected Windows desktop width for metadata and optional validation.",
+    )
+    parser.add_argument(
+        "--expected-height",
+        type=int,
+        default=EXPECTED_SCREEN_SIZE[1],
+        help="Expected Windows desktop height for metadata and optional validation.",
+    )
+    parser.add_argument(
+        "--strict-size",
+        action="store_true",
+        help="Exit with an error if the screenshot size differs from expected.",
+    )
+    parser.add_argument(
+        "--allow-non-windows",
+        action="store_true",
+        help="Allow live capture attempts outside Windows for local smoke tests.",
+    )
 
 
 def run_screenshot_proof(args: argparse.Namespace) -> int:
@@ -236,6 +326,84 @@ def run_candidate_proof(args: argparse.Namespace) -> int:
             f"{candidate.label_box.x2},{candidate.label_box.y2}) "
             f"icon=({candidate.icon_box.x1},{candidate.icon_box.y1},"
             f"{candidate.icon_box.x2},{candidate.icon_box.y2})"
+        )
+
+    if actual_size != expected_size:
+        message = (
+            f"warning: expected {expected_size[0]}x{expected_size[1]} but loaded "
+            f"{actual_size[0]}x{actual_size[1]}"
+        )
+        print(message)
+        if args.strict_size:
+            return 3
+
+    return 0
+
+
+def run_ocr_proof(args: argparse.Namespace) -> int:
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    try:
+        screenshot, raw_path = _load_or_capture_candidate_image(args, timestamp)
+    except DesktopCaptureError as exc:
+        print(f"error: {exc}")
+        return 2
+    except OSError as exc:
+        print(f"error: unable to load screenshot image: {exc}")
+        return 2
+
+    actual_size = screenshot.size
+    expected_size = (args.expected_width, args.expected_height)
+    size_status = "ok" if actual_size == expected_size else "mismatch"
+
+    try:
+        words = extract_ocr_words(
+            screenshot,
+            min_confidence=args.min_confidence,
+            tesseract_cmd=args.tesseract_cmd,
+        )
+    except OcrError as exc:
+        print(f"error: {exc}")
+        return 4
+
+    lines = group_words_by_line(
+        words,
+        max_horizontal_gap=args.max_horizontal_gap,
+        max_vertical_gap=args.max_vertical_gap,
+        max_center_delta=args.max_center_delta,
+    )
+    annotated_path = args.out_dir / f"{timestamp}-desktop-ocr.png"
+    notes = [
+        f"runtime={platform.system()}",
+        f"source={raw_path}",
+        f"captured={actual_size[0]}x{actual_size[1]}",
+        f"expected={expected_size[0]}x{expected_size[1]}",
+        f"size_status={size_status}",
+        f"ocr_words={len(words)}",
+        f"ocr_groups={len(lines)}",
+        f"draw_words={args.draw_words}",
+    ]
+    annotate_ocr_proof(
+        screenshot,
+        words=words,
+        lines=lines,
+        output_path=annotated_path,
+        draw_words=args.draw_words,
+        notes=notes,
+    )
+
+    print(f"source_screenshot={raw_path}")
+    print(f"ocr_screenshot={annotated_path}")
+    print(f"captured_size={actual_size[0]}x{actual_size[1]}")
+    print(f"ocr_words={len(words)}")
+    print(f"ocr_groups={len(lines)}")
+    for index, line in enumerate(lines, start=1):
+        print(
+            f"ocr #{index}: "
+            f"text={line.text!r} "
+            f"box=({line.box.x1},{line.box.y1},{line.box.x2},{line.box.y2}) "
+            f"confidence={line.confidence:.1f}"
         )
 
     if actual_size != expected_size:

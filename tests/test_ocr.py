@@ -82,3 +82,14 @@ def test_group_words_by_line_splits_far_apart_words_on_same_ocr_line():
     lines = group_words_by_line(words, max_horizontal_gap=48)
 
     assert [line.text for line in lines] == ["Steam", "Notepad"]
+
+
+def test_group_words_by_line_keeps_close_neighbors_separate_when_gap_is_tight():
+    words = [
+        OcrWord("CleanShot", 91, Box(90, 260, 148, 274, "CleanShot"), 1, 1, 1, 1),
+        OcrWord("2025-08", 90, Box(154, 260, 210, 274, "2025-08"), 1, 1, 1, 2),
+    ]
+
+    lines = group_words_by_line(words, max_horizontal_gap=4)
+
+    assert [line.text for line in lines] == ["CleanShot", "2025-08"]
