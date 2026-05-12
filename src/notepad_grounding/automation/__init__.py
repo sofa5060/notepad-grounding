@@ -1,2 +1,0 @@
-"""Desktop automation adapters."""
-

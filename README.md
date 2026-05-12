@@ -1,199 +1,98 @@
 # notepad-grounding
 
-Vision-based desktop automation project for dynamically grounding the Windows Notepad desktop shortcut.
+Small Windows desktop grounding proof for a take-home project. The current goal is narrow:
 
-This repository is currently scoped to **Milestone 1** and **Milestone 2** only:
+```text
+Given a screenshot and a visible label query such as "Notepad",
+find the best desktop icon candidate and return a deterministic click center.
+```
 
-- scaffold a uv-managed Python project;
-- create the package structure for the later grounding pipeline;
-- expose a CLI entry point;
-- capture a Windows desktop screenshot;
-- save a raw screenshot and an annotated coordinate-proof screenshot.
-- detect OCR labels and infer icon candidates for Milestone 3.
+This reset intentionally avoids a large module tree. The app first needs to prove that it can see the desktop, show the grid/OCR/candidate reasoning, and locate the target reliably. Full Notepad automation comes after this proof works.
 
-It does not yet launch Notepad, fetch JSONPlaceholder posts, click desktop icons, or ask an LLM for coordinates.
+## Runtime
 
-## Runtime Assumptions
+Final testing must run inside Windows 10/11, ideally the Windows VM used for the interview.
 
-Final runtime testing should happen inside a Windows 11 VM, not on macOS.
+Recommended setup:
 
-Recommended Windows setup:
-
-- Windows 10/11, preferably Windows 11 in Parallels.
-- Display resolution: `1920 x 1080`.
-- Display scale: `100%`.
-- Parallels graphics: `Scaled`.
-- Clone the repo into a normal Windows folder such as:
+- Windows 10/11
+- Resolution: `1920 x 1080`
+- Display scale: `100%`
+- A desktop shortcut named `Notepad`
+- Clone into a normal Windows folder, for example:
 
 ```text
 C:\Users\<user>\Desktop\notepad-grounding
 ```
 
-Avoid running from Parallels shared folders like `C:\Mac\Home\...`.
+Avoid Parallels shared folders such as `C:\Mac\Home\...` for final testing.
 
 ## Setup
 
-Install Python and `uv` inside Windows, then run:
+Use `uv`:
 
 ```powershell
 uv sync
 ```
 
-Milestone 3 uses Tesseract OCR through `pytesseract`. Install Tesseract inside Windows and make sure `tesseract.exe` is available on `PATH`, or pass its path with `--tesseract-cmd`.
+## Locate Proof
 
-On macOS, the package can be installed and unit-tested, but the actual screenshot proof is expected to fail unless explicitly run as a non-Windows smoke test.
-
-## Screenshot Proof
-
-Run this inside the Windows VM:
+Run inside Windows with the desktop visible:
 
 ```powershell
-uv run notepad-grounding screenshot-proof --out-dir output/debug
+uv run notepad-grounding locate --query Notepad --out-dir output/debug
 ```
 
-Expected outputs:
-
-```text
-output/debug/<timestamp>-desktop-raw.png
-output/debug/<timestamp>-desktop-annotated.png
-```
-
-The annotated image draws fixed reference boxes around the top-left origin, top-right corner, bottom-left corner, and screen center. It also writes metadata for the runtime OS, captured screenshot size, expected size, and size status.
-
-For stricter validation of the required runtime size:
+Replay an existing screenshot:
 
 ```powershell
-uv run notepad-grounding screenshot-proof --out-dir output/debug --strict-size
+uv run notepad-grounding locate --query Notepad --image output/debug/screen.png --out-dir output/debug
 ```
 
-If the capture is not `1920x1080`, the command exits non-zero in strict mode.
+The command writes:
 
-## Candidate Proof
+- `<timestamp>-raw.png`: live screenshot, only when no `--image` is supplied
+- `<timestamp>-grid.png`: visible grid overlay for debugging cell size
+- `<timestamp>-ocr.png`: OCR label boxes
+- `<timestamp>-candidates.png`: inferred icon candidates, scores, and selected center
+- `<timestamp>-result.json`: query, screen size, grid settings, selected candidate, and center coordinate
 
-Before grouping labels with icons, use the OCR-only proof to inspect text detection and grouping:
+Tune the debug grid without changing code:
 
 ```powershell
-uv run notepad-grounding ocr-proof --out-dir output/debug --strict-size --tesseract-cmd "C:\Program Files\Tesseract-OCR\tesseract.exe"
+uv run notepad-grounding locate --query Notepad --cell-width 80 --cell-height 92
 ```
 
-`ocr-proof` uses Windows OCR by default because it is designed for UI text and avoids the Tesseract installer. Tesseract remains available for comparison with `--ocr-engine tesseract`.
+## Current Approach
 
-To replay a saved screenshot:
+The first implementation is deterministic:
 
-```powershell
-uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --strict-size
-```
+1. Capture or load a screenshot.
+2. Run Windows OCR on the screenshot.
+3. Group text into visible labels.
+4. Infer an icon box above each plausible label.
+5. Score candidates with fuzzy label matching against the query.
+6. Return the center of the best candidate if its score is high enough.
+7. Save debug images for every step.
 
-Expected OCR output:
+The grid is a visual debugging aid and a future prior. It is not treated as a guarantee because Windows allows manual icon placement; Auto Arrange and icon size are user settings.
 
-```text
-output/debug/<timestamp>-desktop-ocr.png
-```
+## Why No LLM Yet
 
-The OCR proof image draws grouped text boxes in green. Add `--draw-words` to also draw raw Tesseract word boxes in orange:
+The assignment references ScreenSpot-Pro / ScreenSeekeR. The useful lesson for this project is search-space reduction and explainable visual grounding, not direct LLM coordinate prediction.
 
-```powershell
-uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --draw-words
-```
-
-If nearby labels are being merged incorrectly, tune grouping without changing code:
-
-```powershell
-uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --max-horizontal-gap 12 --max-vertical-gap 4
-```
-
-To compare against Tesseract tiled OCR:
-
-```powershell
-uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --ocr-engine tesseract --ocr-mode tiled --draw-words --tesseract-cmd "C:\Program Files\Tesseract-OCR\tesseract.exe"
-```
-
-To compare against Tesseract full-screen OCR:
-
-```powershell
-uv run notepad-grounding ocr-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --ocr-engine tesseract --ocr-mode full --draw-words --tesseract-cmd "C:\Program Files\Tesseract-OCR\tesseract.exe"
-```
-
-Run this inside the Windows VM with the desktop visible:
-
-```powershell
-uv run notepad-grounding candidate-proof --out-dir output/debug --strict-size
-```
-
-If Tesseract is installed but not on `PATH`, pass the executable path:
-
-```powershell
-uv run notepad-grounding candidate-proof --out-dir output/debug --strict-size --tesseract-cmd "C:\Program Files\Tesseract-OCR\tesseract.exe"
-```
-
-To replay a saved screenshot without capturing the live desktop again:
-
-```powershell
-uv run notepad-grounding candidate-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --strict-size
-```
-
-Expected output:
-
-```text
-output/debug/<timestamp>-desktop-candidates.png
-```
-
-The candidate proof image uses:
-
-- green boxes for OCR label groups;
-- blue boxes for inferred icon boxes;
-- yellow boxes for combined icon+label candidates.
-
-For the centered Notepad screenshot, the expected visual result is one candidate where the green label box wraps `Notepad`, the blue icon box sits above it, and the yellow combined box encloses both.
+An LLM verifier can be added later, but only after deterministic candidates exist. If used, it should choose among numbered candidate IDs. It should not output pixel coordinates.
 
 ## Development Checks
 
-Run focused tests:
-
 ```bash
 uv run pytest -v
-```
-
-Check the CLI wiring:
-
-```bash
 uv run notepad-grounding --help
 ```
 
-## Current Architecture
+## Next Milestones
 
-The package follows the planned candidate-first grounding layout:
-
-```text
-src/notepad_grounding/
-  main.py
-  config.py
-  automation/
-    desktop.py
-    notepad.py
-  grounding/
-    annotations.py
-    candidates.py
-    detector.py
-    ocr.py
-    scoring.py
-    template.py
-    verifier.py
-  data/
-    posts.py
-```
-
-`automation.desktop`, `grounding.annotations`, `grounding.ocr`, `grounding.candidates`, and the CLI contain real runtime behavior through Milestone 3. The remaining modules are placeholders for later milestones.
-
-## Grounding Direction
-
-The project will use a deterministic candidate-first pipeline:
-
-1. capture a desktop screenshot;
-2. OCR icon labels;
-3. infer icon candidate boxes above labels;
-4. score candidates with label, geometry, and template evidence;
-5. optionally ask an LLM verifier to choose among numbered candidates;
-6. click the deterministic center of the selected candidate.
-
-The LLM verifier, if added later, must choose among candidate IDs. It should not directly predict pixel coordinates.
+1. Validate `locate --query Notepad` on Windows with the icon in top-left, center, and bottom-right positions.
+2. Use the grid/OCR/candidate images to tune default cell size and candidate geometry.
+3. Add a small optional ScreenSeekeR-lite experiment: planner suggests regions, deterministic code still returns coordinates.
+4. Add Notepad launch/save automation only after location proof is reliable.

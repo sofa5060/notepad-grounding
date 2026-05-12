@@ -1,2 +1,0 @@
-"""Visual grounding pipeline modules."""
-

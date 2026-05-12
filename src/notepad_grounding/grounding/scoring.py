@@ -1,2 +1,0 @@
-"""Future deterministic candidate scoring."""
-
