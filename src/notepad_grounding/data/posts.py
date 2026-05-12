@@ -1,0 +1,2 @@
+"""Future JSONPlaceholder post loading."""
+
