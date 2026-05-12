@@ -9,8 +9,9 @@ This repository is currently scoped to **Milestone 1** and **Milestone 2** only:
 - expose a CLI entry point;
 - capture a Windows desktop screenshot;
 - save a raw screenshot and an annotated coordinate-proof screenshot.
+- detect OCR labels and infer icon candidates for Milestone 3.
 
-It does not yet run OCR, detect icon candidates, launch Notepad, fetch JSONPlaceholder posts, or ask an LLM for coordinates.
+It does not yet launch Notepad, fetch JSONPlaceholder posts, click desktop icons, or ask an LLM for coordinates.
 
 ## Runtime Assumptions
 
@@ -38,6 +39,8 @@ Install Python and `uv` inside Windows, then run:
 uv sync
 ```
 
+Milestone 3 uses Tesseract OCR through `pytesseract`. Install Tesseract inside Windows and make sure `tesseract.exe` is available on `PATH`, or pass its path with `--tesseract-cmd`.
+
 On macOS, the package can be installed and unit-tested, but the actual screenshot proof is expected to fail unless explicitly run as a non-Windows smoke test.
 
 ## Screenshot Proof
@@ -64,6 +67,40 @@ uv run notepad-grounding screenshot-proof --out-dir output/debug --strict-size
 ```
 
 If the capture is not `1920x1080`, the command exits non-zero in strict mode.
+
+## Candidate Proof
+
+Run this inside the Windows VM with the desktop visible:
+
+```powershell
+uv run notepad-grounding candidate-proof --out-dir output/debug --strict-size
+```
+
+If Tesseract is installed but not on `PATH`, pass the executable path:
+
+```powershell
+uv run notepad-grounding candidate-proof --out-dir output/debug --strict-size --tesseract-cmd "C:\Program Files\Tesseract-OCR\tesseract.exe"
+```
+
+To replay a saved screenshot without capturing the live desktop again:
+
+```powershell
+uv run notepad-grounding candidate-proof --image output/debug/<timestamp>-desktop-raw.png --out-dir output/debug --strict-size
+```
+
+Expected output:
+
+```text
+output/debug/<timestamp>-desktop-candidates.png
+```
+
+The candidate proof image uses:
+
+- green boxes for OCR label groups;
+- blue boxes for inferred icon boxes;
+- yellow boxes for combined icon+label candidates.
+
+For the centered Notepad screenshot, the expected visual result is one candidate where the green label box wraps `Notepad`, the blue icon box sits above it, and the yellow combined box encloses both.
 
 ## Development Checks
 
@@ -102,7 +139,7 @@ src/notepad_grounding/
     posts.py
 ```
 
-Only `automation.desktop`, `grounding.annotations`, and the CLI contain real runtime behavior for this milestone. The remaining modules are placeholders for later milestones.
+`automation.desktop`, `grounding.annotations`, `grounding.ocr`, `grounding.candidates`, and the CLI contain real runtime behavior through Milestone 3. The remaining modules are placeholders for later milestones.
 
 ## Grounding Direction
 

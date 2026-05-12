@@ -63,6 +63,44 @@ def annotate_screenshot(
     return output_path
 
 
+def annotate_candidate_proof(
+    image: Image.Image,
+    *,
+    labels: Iterable[object],
+    candidates: Iterable[object],
+    output_path: Path,
+    title: str | None = "Milestone 3 OCR candidate proof",
+    notes: Iterable[str] = (),
+) -> Path:
+    annotated = image.convert("RGB").copy()
+    draw = ImageDraw.Draw(annotated)
+    font = ImageFont.load_default()
+
+    yellow = (255, 210, 0)
+    blue = (0, 120, 255)
+    green = (0, 180, 80)
+
+    for candidate in candidates:
+        candidate_id = getattr(candidate, "candidate_id")
+        label_text = getattr(candidate, "label_text")
+        combined_box = getattr(candidate, "combined_box")
+        icon_box = getattr(candidate, "icon_box")
+        _draw_box(draw, combined_box, yellow, f"#{candidate_id} {label_text}", font)
+        _draw_box(draw, icon_box, blue, "icon", font)
+
+    for label in labels:
+        label_box = getattr(label, "box")
+        label_text = getattr(label, "text")
+        _draw_box(draw, label_box, green, label_text, font)
+
+    if title or notes:
+        _draw_metadata(draw, title=title, notes=list(notes), font=font)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    annotated.save(output_path)
+    return output_path
+
+
 def _clamp_box(box: Box, width: int, height: int) -> tuple[int, int, int, int]:
     max_x = max(width - 1, 0)
     max_y = max(height - 1, 0)
@@ -87,6 +125,22 @@ def _draw_label(
     draw.text((label_x, label_y), text, fill=(255, 0, 0), font=font)
 
 
+def _draw_box(
+    draw: ImageDraw.ImageDraw,
+    box: Box,
+    color: tuple[int, int, int],
+    text: str,
+    font: ImageFont.ImageFont,
+) -> None:
+    coords = _clamp_box(box, draw.im.size[0], draw.im.size[1])
+    draw.rectangle(coords, outline=color, width=3)
+    label_x = coords[0] + 4
+    label_y = max(coords[1] - 14, 0)
+    left, top, right, bottom = draw.textbbox((label_x, label_y), text, font=font)
+    draw.rectangle((left - 2, top - 1, right + 2, bottom + 1), fill=(255, 255, 255))
+    draw.text((label_x, label_y), text, fill=color, font=font)
+
+
 def _draw_metadata(
     draw: ImageDraw.ImageDraw,
     *,
@@ -104,4 +158,3 @@ def _draw_metadata(
     draw.rectangle(panel, fill=(255, 255, 255), outline=(0, 0, 0))
     for index, line in enumerate(lines):
         draw.text((14, 12 + index * line_height), line, fill=(0, 0, 0), font=font)
-
