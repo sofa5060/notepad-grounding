@@ -22,6 +22,7 @@ from notepad_grounding.grounding.candidates import infer_icon_candidates
 from notepad_grounding.grounding.ocr import (
     OcrError,
     extract_ocr_lines,
+    extract_ocr_words_tiled,
     extract_ocr_words,
     group_words_by_line,
 )
@@ -154,6 +155,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--draw-words",
         action="store_true",
         help="Overlay raw word boxes in addition to grouped text boxes.",
+    )
+    ocr.add_argument(
+        "--ocr-mode",
+        choices=("tiled", "full"),
+        default="tiled",
+        help="Use tiled OCR for small desktop labels or full-screen OCR for comparison.",
+    )
+    ocr.add_argument(
+        "--tile-size",
+        type=int,
+        default=360,
+        help="Tile width and height for tiled OCR mode.",
+    )
+    ocr.add_argument(
+        "--tile-overlap",
+        type=int,
+        default=80,
+        help="Overlap in pixels between adjacent OCR tiles.",
     )
     ocr.add_argument(
         "--max-horizontal-gap",
@@ -358,11 +377,20 @@ def run_ocr_proof(args: argparse.Namespace) -> int:
     size_status = "ok" if actual_size == expected_size else "mismatch"
 
     try:
-        words = extract_ocr_words(
-            screenshot,
-            min_confidence=args.min_confidence,
-            tesseract_cmd=args.tesseract_cmd,
-        )
+        if args.ocr_mode == "tiled":
+            words = extract_ocr_words_tiled(
+                screenshot,
+                min_confidence=args.min_confidence,
+                tesseract_cmd=args.tesseract_cmd,
+                tile_size=args.tile_size,
+                overlap=args.tile_overlap,
+            )
+        else:
+            words = extract_ocr_words(
+                screenshot,
+                min_confidence=args.min_confidence,
+                tesseract_cmd=args.tesseract_cmd,
+            )
     except OcrError as exc:
         print(f"error: {exc}")
         return 4
@@ -382,6 +410,7 @@ def run_ocr_proof(args: argparse.Namespace) -> int:
         f"size_status={size_status}",
         f"ocr_words={len(words)}",
         f"ocr_groups={len(lines)}",
+        f"ocr_mode={args.ocr_mode}",
         f"draw_words={args.draw_words}",
     ]
     annotate_ocr_proof(
@@ -398,6 +427,7 @@ def run_ocr_proof(args: argparse.Namespace) -> int:
     print(f"captured_size={actual_size[0]}x{actual_size[1]}")
     print(f"ocr_words={len(words)}")
     print(f"ocr_groups={len(lines)}")
+    print(f"ocr_mode={args.ocr_mode}")
     for index, line in enumerate(lines, start=1):
         print(
             f"ocr #{index}: "

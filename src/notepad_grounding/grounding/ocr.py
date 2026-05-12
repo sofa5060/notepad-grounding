@@ -89,6 +89,106 @@ def extract_ocr_words(
     )
 
 
+def extract_ocr_words_tiled(
+    image: Image.Image,
+    *,
+    min_confidence: float = 50,
+    tesseract_cmd: str | None = None,
+    upscale_factor: int = 2,
+    tile_size: int = 360,
+    overlap: int = 80,
+) -> list[OcrWord]:
+    """Run OCR over overlapping crops and return deduplicated screen coordinates."""
+
+    words: list[OcrWord] = []
+    for tile_index, tile in enumerate(
+        iter_ocr_tiles(width=image.width, height=image.height, tile_size=tile_size, overlap=overlap),
+        start=1,
+    ):
+        crop = image.crop((tile.x1, tile.y1, tile.x2, tile.y2))
+        tile_words = extract_ocr_words(
+            crop,
+            min_confidence=min_confidence,
+            tesseract_cmd=tesseract_cmd,
+            upscale_factor=upscale_factor,
+        )
+        words.extend(
+            offset_ocr_words(
+                tile_words,
+                offset_x=tile.x1,
+                offset_y=tile.y1,
+                group_offset=tile_index * 1000,
+            )
+        )
+
+    return dedupe_ocr_words(words)
+
+
+def iter_ocr_tiles(
+    *,
+    width: int,
+    height: int,
+    tile_size: int,
+    overlap: int,
+) -> list[Box]:
+    if tile_size <= 0:
+        raise ValueError("tile_size must be positive")
+    if overlap < 0 or overlap >= tile_size:
+        raise ValueError("overlap must be greater than or equal to 0 and less than tile_size")
+
+    stride = tile_size - overlap
+    x_starts = _tile_starts(length=width, tile_size=tile_size, stride=stride)
+    y_starts = _tile_starts(length=height, tile_size=tile_size, stride=stride)
+    return [
+        Box(x, y, min(x + tile_size, width), min(y + tile_size, height), "tile")
+        for y in y_starts
+        for x in x_starts
+    ]
+
+
+def offset_ocr_words(
+    words: Iterable[OcrWord],
+    *,
+    offset_x: int,
+    offset_y: int,
+    group_offset: int,
+) -> list[OcrWord]:
+    offset_words: list[OcrWord] = []
+    for word in words:
+        box = Box(
+            word.box.x1 + offset_x,
+            word.box.y1 + offset_y,
+            word.box.x2 + offset_x,
+            word.box.y2 + offset_y,
+            word.box.label,
+        )
+        offset_words.append(
+            OcrWord(
+                text=word.text,
+                confidence=word.confidence,
+                box=box,
+                block_num=word.block_num + group_offset,
+                par_num=word.par_num,
+                line_num=word.line_num,
+                word_num=word.word_num,
+            )
+        )
+    return offset_words
+
+
+def dedupe_ocr_words(
+    words: Iterable[OcrWord],
+    *,
+    iou_threshold: float = 0.45,
+) -> list[OcrWord]:
+    kept: list[OcrWord] = []
+    for word in sorted(words, key=lambda item: item.confidence, reverse=True):
+        if any(_is_duplicate_word(word, existing, iou_threshold=iou_threshold) for existing in kept):
+            continue
+        kept.append(word)
+    return sorted(kept, key=lambda item: (item.box.y1, item.box.x1, item.text.lower()))
+
+
 def prepare_image_for_ocr(image: Image.Image, *, upscale_factor: int = 2) -> Image.Image:
     """Improve desktop-label OCR by enlarging and increasing text contrast."""
 
@@ -100,6 +200,51 @@ def prepare_image_for_ocr(image: Image.Image, *, upscale_factor: int = 2) -> Ima
         (image.width * upscale_factor, image.height * upscale_factor),
         Image.Resampling.LANCZOS,
     )
+
+
+def _tile_starts(*, length: int, tile_size: int, stride: int) -> list[int]:
+    if length <= tile_size:
+        return [0]
+
+    starts = list(range(0, max(length - tile_size, 0) + 1, stride))
+    final_start = length - tile_size
+    if starts[-1] != final_start:
+        starts.append(final_start)
+    return starts
+
+
+def _is_duplicate_word(
+    candidate: OcrWord,
+    existing: OcrWord,
+    *,
+    iou_threshold: float,
+) -> bool:
+    if _normalize_text(candidate.text) != _normalize_text(existing.text):
+        return False
+    return _box_iou(candidate.box, existing.box) >= iou_threshold
+
+
+def _normalize_text(text: str) -> str:
+    return "".join(character.lower() for character in text if character.isalnum())
+
+
+def _box_iou(first: Box, second: Box) -> float:
+    inter_x1 = max(first.x1, second.x1)
+    inter_y1 = max(first.y1, second.y1)
+    inter_x2 = min(first.x2, second.x2)
+    inter_y2 = min(first.y2, second.y2)
+    inter_width = max(0, inter_x2 - inter_x1)
+    inter_height = max(0, inter_y2 - inter_y1)
+    intersection = inter_width * inter_height
+    if intersection == 0:
+        return 0
+
+    first_area = max(0, first.x2 - first.x1) * max(0, first.y2 - first.y1)
+    second_area = max(0, second.x2 - second.x1) * max(0, second.y2 - second.y1)
+    union = first_area + second_area - intersection
+    if union == 0:
+        return 0
+    return intersection / union
 
 
 def extract_words_from_tesseract_data(

@@ -1,8 +1,11 @@
 from notepad_grounding.grounding.annotations import Box
 from notepad_grounding.grounding.ocr import (
     OcrWord,
+    dedupe_ocr_words,
     extract_words_from_tesseract_data,
     group_words_by_line,
+    iter_ocr_tiles,
+    offset_ocr_words,
 )
 
 
@@ -93,3 +96,36 @@ def test_group_words_by_line_keeps_close_neighbors_separate_when_gap_is_tight():
     lines = group_words_by_line(words, max_horizontal_gap=4)
 
     assert [line.text for line in lines] == ["CleanShot", "2025-08"]
+
+
+def test_iter_ocr_tiles_covers_image_with_overlap():
+    tiles = iter_ocr_tiles(width=700, height=500, tile_size=300, overlap=80)
+
+    assert tiles[0] == Box(0, 0, 300, 300, "tile")
+    assert tiles[-1] == Box(400, 200, 700, 500, "tile")
+    assert all(tile.x2 - tile.x1 <= 300 for tile in tiles)
+    assert all(tile.y2 - tile.y1 <= 300 for tile in tiles)
+
+
+def test_offset_ocr_words_maps_tile_coordinates_to_screen_coordinates():
+    words = [
+        OcrWord("Notepad", 91, Box(20, 30, 70, 46, "Notepad"), 1, 1, 1, 1),
+    ]
+
+    offset = offset_ocr_words(words, offset_x=400, offset_y=200, group_offset=100)
+
+    assert offset[0].box == Box(420, 230, 470, 246, "Notepad")
+    assert offset[0].block_num == 101
+
+
+def test_dedupe_ocr_words_keeps_highest_confidence_duplicate():
+    words = [
+        OcrWord("Notepad", 82, Box(420, 230, 470, 246, "Notepad"), 1, 1, 1, 1),
+        OcrWord("Notepad", 94, Box(422, 231, 471, 247, "Notepad"), 2, 1, 1, 1),
+        OcrWord("Steam", 90, Box(20, 360, 58, 376, "Steam"), 3, 1, 1, 1),
+    ]
+
+    deduped = dedupe_ocr_words(words)
+
+    assert [word.text for word in deduped] == ["Notepad", "Steam"]
+    assert deduped[0].confidence == 94
