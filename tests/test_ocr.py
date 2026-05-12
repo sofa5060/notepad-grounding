@@ -1,3 +1,5 @@
+from PIL import Image
+
 from notepad_grounding.grounding.annotations import Box
 from notepad_grounding.grounding.ocr import (
     OcrWord,
@@ -6,6 +8,7 @@ from notepad_grounding.grounding.ocr import (
     group_words_by_line,
     iter_ocr_tiles,
     offset_ocr_words,
+    prepare_desktop_label_image,
     windows_ocr_result_to_words,
 )
 
@@ -165,3 +168,37 @@ def test_windows_ocr_result_to_words_maps_lines_and_bounding_rects():
         OcrWord("Note", 100, Box(700, 450, 730, 464, "Note"), 1, 1, 1, 1),
         OcrWord("pad", 100, Box(732, 450, 752, 464, "pad"), 1, 1, 1, 2),
     ]
+
+
+def test_prepare_desktop_label_image_amplifies_white_text_on_blue_background():
+    # Create a synthetic desktop-like image: blue background with a white text region
+    image = Image.new("RGB", (100, 60), "#2B7BF6")  # Windows-ish blue wallpaper
+    pixels = image.load()
+    # Draw a small "white text" block (simulating icon label)
+    for x in range(20, 80):
+        for y in range(25, 35):
+            pixels[x, y] = (240, 240, 240)  # White text
+    # Add shadow below
+    for x in range(20, 80):
+        for y in range(35, 38):
+            pixels[x, y] = (30, 30, 30)  # Dark shadow
+
+    preprocessed = prepare_desktop_label_image(image, upscale_factor=1)
+
+    # Preprocessed image should be grayscale
+    assert preprocessed.mode == "L"
+    # Text region should be bright (amplified)
+    text_region = preprocessed.getpixel((50, 30))
+    bg_region = preprocessed.getpixel((10, 10))
+    shadow_region = preprocessed.getpixel((50, 36))
+    # Text should be brighter than background
+    assert text_region > bg_region
+    # Shadow should be darker than background (or at least different)
+    assert shadow_region != bg_region
+
+
+def test_prepare_desktop_label_image_upscales_output():
+    image = Image.new("RGB", (100, 60), "#2B7BF6")
+    preprocessed = prepare_desktop_label_image(image, upscale_factor=3)
+
+    assert preprocessed.size == (300, 180)

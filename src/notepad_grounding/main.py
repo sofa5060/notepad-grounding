@@ -26,6 +26,8 @@ from notepad_grounding.grounding.ocr import (
     extract_ocr_words,
     extract_windows_ocr_words,
     group_words_by_line,
+    prepare_desktop_label_image,
+    prepare_image_for_ocr,
 )
 
 
@@ -134,6 +136,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional path to the Tesseract executable.",
     )
+    candidate.add_argument(
+        "--preprocess-mode",
+        choices=("desktop_label", "standard"),
+        default="desktop_label",
+        help="OCR preprocessing mode. 'desktop_label' is optimized for icon text.",
+    )
 
     ocr = subparsers.add_parser(
         "ocr-proof",
@@ -168,6 +176,17 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("tiled", "full"),
         default="tiled",
         help="Tesseract-only mode: tiled OCR for small labels or full-screen OCR for comparison.",
+    )
+    ocr.add_argument(
+        "--preprocess-mode",
+        choices=("desktop_label", "standard"),
+        default="desktop_label",
+        help="OCR preprocessing mode. 'desktop_label' is optimized for icon text.",
+    )
+    ocr.add_argument(
+        "--save-preprocessed",
+        action="store_true",
+        help="Save the preprocessed image that is fed to the OCR engine for debugging.",
     )
     ocr.add_argument(
         "--tile-size",
@@ -315,6 +334,7 @@ def run_candidate_proof(args: argparse.Namespace) -> int:
             screenshot,
             min_confidence=args.min_confidence,
             tesseract_cmd=args.tesseract_cmd,
+            preprocess_mode=args.preprocess_mode,
         )
     except OcrError as exc:
         print(f"error: {exc}")
@@ -383,6 +403,16 @@ def run_ocr_proof(args: argparse.Namespace) -> int:
     expected_size = (args.expected_width, args.expected_height)
     size_status = "ok" if actual_size == expected_size else "mismatch"
 
+    # Save preprocessed debug image if requested
+    if args.save_preprocessed:
+        if args.preprocess_mode == "desktop_label":
+            preprocessed = prepare_desktop_label_image(screenshot, upscale_factor=3)
+        else:
+            preprocessed = prepare_image_for_ocr(screenshot, upscale_factor=2)
+        preprocessed_path = args.out_dir / f"{timestamp}-desktop-preprocessed.png"
+        preprocessed.save(preprocessed_path)
+        print(f"preprocessed_screenshot={preprocessed_path}")
+
     try:
         if args.ocr_engine == "windows":
             words = extract_windows_ocr_words(screenshot)
@@ -393,12 +423,14 @@ def run_ocr_proof(args: argparse.Namespace) -> int:
                 tesseract_cmd=args.tesseract_cmd,
                 tile_size=args.tile_size,
                 overlap=args.tile_overlap,
+                preprocess_mode=args.preprocess_mode,
             )
         else:
             words = extract_ocr_words(
                 screenshot,
                 min_confidence=args.min_confidence,
                 tesseract_cmd=args.tesseract_cmd,
+                preprocess_mode=args.preprocess_mode,
             )
     except OcrError as exc:
         print(f"error: {exc}")
@@ -421,6 +453,7 @@ def run_ocr_proof(args: argparse.Namespace) -> int:
         f"ocr_groups={len(lines)}",
         f"ocr_engine={args.ocr_engine}",
         f"ocr_mode={args.ocr_mode}",
+        f"preprocess_mode={args.preprocess_mode}",
         f"draw_words={args.draw_words}",
     ]
     annotate_ocr_proof(
@@ -439,6 +472,7 @@ def run_ocr_proof(args: argparse.Namespace) -> int:
     print(f"ocr_groups={len(lines)}")
     print(f"ocr_engine={args.ocr_engine}")
     print(f"ocr_mode={args.ocr_mode}")
+    print(f"preprocess_mode={args.preprocess_mode}")
     for index, line in enumerate(lines, start=1):
         print(
             f"ocr #{index}: "

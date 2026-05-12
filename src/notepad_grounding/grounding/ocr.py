@@ -41,6 +41,7 @@ def extract_ocr_lines(
     min_confidence: float = 50,
     tesseract_cmd: str | None = None,
     upscale_factor: int = 2,
+    preprocess_mode: str = "desktop_label",
 ) -> list[OcrLine]:
     """Run Tesseract OCR and return grouped desktop-label-like text lines."""
 
@@ -49,6 +50,7 @@ def extract_ocr_lines(
         min_confidence=min_confidence,
         tesseract_cmd=tesseract_cmd,
         upscale_factor=upscale_factor,
+        preprocess_mode=preprocess_mode,
     )
     return group_words_by_line(words)
 
@@ -59,8 +61,18 @@ def extract_ocr_words(
     min_confidence: float = 50,
     tesseract_cmd: str | None = None,
     upscale_factor: int = 2,
+    preprocess_mode: str = "desktop_label",
 ) -> list[OcrWord]:
-    """Run Tesseract OCR and return raw word boxes in screenshot coordinates."""
+    """Run Tesseract OCR and return raw word boxes in screenshot coordinates.
+
+    Args:
+        image: Input screenshot image.
+        min_confidence: Minimum Tesseract confidence to keep a word.
+        tesseract_cmd: Optional path to Tesseract executable.
+        upscale_factor: Factor to upscale before OCR (higher = more accurate on small text).
+        preprocess_mode: "desktop_label" for icon-label-specific preprocessing,
+            "standard" for generic grayscale + contrast.
+    """
 
     try:
         import pytesseract
@@ -71,7 +83,10 @@ def extract_ocr_words(
     if tesseract_cmd:
         pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 
-    ocr_image = prepare_image_for_ocr(image, upscale_factor=upscale_factor)
+    if preprocess_mode == "desktop_label":
+        ocr_image = prepare_desktop_label_image(image, upscale_factor=upscale_factor)
+    else:
+        ocr_image = prepare_image_for_ocr(image, upscale_factor=upscale_factor)
 
     try:
         data = pytesseract.image_to_data(
@@ -100,6 +115,7 @@ def extract_ocr_words_tiled(
     upscale_factor: int = 2,
     tile_size: int = 360,
     overlap: int = 80,
+    preprocess_mode: str = "desktop_label",
 ) -> list[OcrWord]:
     """Run OCR over overlapping crops and return deduplicated screen coordinates."""
 
@@ -114,6 +130,7 @@ def extract_ocr_words_tiled(
             min_confidence=min_confidence,
             tesseract_cmd=tesseract_cmd,
             upscale_factor=upscale_factor,
+            preprocess_mode=preprocess_mode,
         )
         words.extend(
             offset_ocr_words(
@@ -283,6 +300,96 @@ def prepare_image_for_ocr(image: Image.Image, *, upscale_factor: int = 2) -> Ima
         (image.width * upscale_factor, image.height * upscale_factor),
         Image.Resampling.LANCZOS,
     )
+
+
+def prepare_desktop_label_image(image: Image.Image, *, upscale_factor: int = 3) -> Image.Image:
+    """Preprocess screenshot specifically for desktop icon label OCR.
+
+    Desktop icon labels are rendered as white text with a dark drop shadow
+    on top of arbitrary wallpaper. Standard OCR preprocessing (grayscale +
+    contrast) does not amplify this specific signature and often misses small
+    labels.
+
+    This function:
+      1. Detects "white text" pixels (high, balanced RGB values)
+      2. Detects "dark shadow" pixels (low luminance)
+      3. Creates a text probability map that combines both signals
+      4. Produces a high-contrast output where text is white (255),
+         shadow is black (0), and wallpaper is suppressed to mid-gray
+      5. Upscales for better OCR accuracy on small fonts
+
+    The result looks like a synthetic document image, which OCR engines
+    handle much more reliably than raw desktop screenshots.
+    """
+
+    rgb = image.convert("RGB")
+    pixels = rgb.load()
+    width, height = rgb.size
+
+    # Pass 1: compute per-pixel text-likeness scores
+    # White text: all channels high and similar
+    # Dark shadow: all channels low
+    text_score = [[0.0 for _ in range(width)] for _ in range(height)]
+
+    for y in range(height):
+        for x in range(width):
+            r, g, b = pixels[x, y]
+            luminance = (0.299 * r + 0.587 * g + 0.114 * b)
+            max_channel = max(r, g, b)
+            min_channel = min(r, g, b)
+            channel_spread = max_channel - min_channel
+
+            # White text score: high luminance, low spread (balanced channels)
+            whiteness = 0.0
+            if luminance >= 160 and channel_spread <= 40:
+                whiteness = (luminance - 160) / 95.0  # 160-255 -> 0.0-1.0
+
+            # Dark shadow score: low luminance
+            shadowness = 0.0
+            if luminance <= 80:
+                shadowness = (80 - luminance) / 80.0  # 0-80 -> 1.0-0.0
+
+            text_score[y][x] = max(whiteness, shadowness * 0.6)
+
+    # Pass 2: local enhancement — boost pixels that are text-like or
+    # adjacent to text-like pixels (catches faint shadow edges)
+    enhanced = Image.new("L", (width, height), 128)
+    enhanced_pixels = enhanced.load()
+
+    for y in range(height):
+        for x in range(width):
+            score = text_score[y][x]
+
+            # Also consider neighborhood: a pixel near strong text is likely text
+            neighborhood_max = score
+            if score < 0.5:
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        ny, nx = y + dy, x + dx
+                        if 0 <= ny < height and 0 <= nx < width:
+                            neighborhood_max = max(neighborhood_max, text_score[ny][nx])
+
+            combined = max(score, neighborhood_max * 0.7)
+
+            # Map to output: text -> white, background -> mid-gray
+            if combined >= 0.35:
+                value = int(128 + combined * 127)
+            else:
+                value = int(128 - (0.35 - combined) * 200)
+                value = max(0, value)
+
+            enhanced_pixels[x, y] = min(255, value)
+
+    # Pass 3: global contrast boost
+    high_contrast = ImageEnhance.Contrast(enhanced).enhance(3.0)
+
+    # Pass 4: upscale
+    if upscale_factor > 1:
+        return high_contrast.resize(
+            (width * upscale_factor, height * upscale_factor),
+            Image.Resampling.LANCZOS,
+        )
+    return high_contrast
 
 
 def _tile_starts(*, length: int, tile_size: int, stride: int) -> list[int]:
