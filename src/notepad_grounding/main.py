@@ -14,7 +14,9 @@ from notepad_grounding.flows.grid_ocr.grounding import locate_from_lines
 from notepad_grounding.flows.grid_ocr.ocr import OcrError
 from notepad_grounding.flows.grid_ocr.ocr import extract_windows_ocr_lines
 from notepad_grounding.flows.grid_ocr.ocr import iter_ocr_tiles
+from notepad_grounding.flows.automation.runner import run_automation
 from notepad_grounding.flows.llm_visual_search.flow import run_llm_visual_search
+from notepad_grounding.shared.api import ApiError
 from notepad_grounding.shared.capture import CaptureError
 from notepad_grounding.shared.capture import capture_desktop
 from notepad_grounding.shared.capture import load_image
@@ -26,6 +28,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "locate":
         return run_locate(args)
+    if args.command == "automate":
+        return run_automate(args)
     parser.print_help()
     return 0
 
@@ -57,6 +61,15 @@ def build_parser() -> argparse.ArgumentParser:
     locate.add_argument("--ocr-tile-overlap", type=int, default=48, help=argparse.SUPPRESS)
     locate.add_argument("--llm-rounds", type=int, default=3, help=argparse.SUPPRESS)
     locate.add_argument("--llm-model", type=str, default=None, help=argparse.SUPPRESS)
+
+    automate = subparsers.add_parser("automate", help="Launch Notepad and save posts from JSONPlaceholder.")
+    automate.add_argument("--query", required=True, help="Visible target, for example Notepad.")
+    automate.add_argument("--out-dir", type=Path, default=Path("output"), help="Debug output root.")
+    automate.add_argument("--max-retries", type=int, default=3, help="Retry attempts per post.")
+    automate.add_argument("--retry-delay", type=float, default=1.0, help="Seconds between retries.")
+    automate.add_argument("--post-limit", type=int, default=10, help="Number of posts to fetch.")
+    automate.add_argument("--llm-rounds", type=int, default=3, help=argparse.SUPPRESS)
+    automate.add_argument("--llm-model", type=str, default=None, help=argparse.SUPPRESS)
     return parser
 
 
@@ -71,6 +84,35 @@ def run_locate(args: argparse.Namespace) -> int:
     if args.flow == "llm-visual":
         return run_llm_visual_locate(args, image)
     return run_grid_ocr_locate(args, image, source_path, timestamp)
+
+
+def run_automate(args: argparse.Namespace) -> int:
+    try:
+        client = OpenAIVisionClient(model=args.llm_model)
+        result = run_automation(
+            query=args.query,
+            client=client,
+            output_root=args.out_dir,
+            max_retries=args.max_retries,
+            retry_delay=args.retry_delay,
+            post_limit=args.post_limit,
+            llm_rounds=args.llm_rounds,
+        )
+    except ApiError as exc:
+        print(f"error: {exc}")
+        return 4
+    except Exception as exc:
+        print(f"error: {exc}")
+        return 3
+
+    print(f"flow=automate")
+    print(f"output_dir={result.output_dir}")
+    print(f"result={result.result_json}")
+    print(f"total_posts={result.total_posts}")
+    print(f"succeeded={result.succeeded}")
+    print(f"failed={result.failed}")
+    print(f"skipped={result.skipped}")
+    return 0
 
 
 def run_llm_visual_locate(args: argparse.Namespace, image) -> int:
