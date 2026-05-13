@@ -27,16 +27,18 @@ The grounding uses a **coarse-to-fine grid search**:
 1. **Screenshot** — captures the desktop (or loads an image)
 2. **Coarse grid** — draws a 3×4 grid over the screenshot, labels each cell (`R1-1-1`, `R1-1-2`, etc.)
 3. **LLM picks a cell** — sends the grid image to the LLM, which returns the cell ID containing the icon (no pixel coordinates!)
-4. **Crop** — crops the selected region with padding
-5. **Repeat** — draws a finer 3×3 grid on the crop, LLM picks again
-6. **Iterative bbox refinement** — once the crop is small enough:
+4. **Grid judge validates the crop** — crops the selected cell with padding and asks a second vision call whether that crop actually contains the target icon or label
+5. **Retry if rejected** — if the judge rejects the crop, the chooser is told which cell was wrong and must pick a different cell in the same conversation
+6. **Crop** — once accepted, crops the selected region with padding
+7. **Repeat** — draws a finer 3×3 grid on the crop, LLM picks again
+8. **Iterative bbox refinement** — once the crop is small enough:
    - LLM gives initial icon bounding box coordinates
    - Code draws the bbox in **red** on the image
    - The drawn image is sent back to the **same conversation** (`previous_response_id`)
    - LLM reviews: *"Is the red rectangle correctly placed over ONLY the icon?"*
    - If wrong, LLM gives corrected coordinates
    - Repeat up to 3× until confirmed
-7. **Center calculation** — code computes the center of the final bbox in screen coordinates
+9. **Center calculation** — code computes the center of the final bbox in screen coordinates
 
 All artifacts (grids, crops, detections) are saved under `output/llm_visual_search/<timestamp>/`.
 
@@ -63,7 +65,19 @@ For each of the first 10 posts from JSONPlaceholder:
 
 If any step fails, the system retries up to 3 times with a 1-second delay.
 
-### The Reviewer Pattern
+### Validation Layers
+
+The system uses three separate validation layers:
+
+| Layer | When it runs | What it checks |
+|-------|--------------|----------------|
+| Grid judge | After every selected grid cell | The selected crop contains the requested icon/app visual or matching label |
+| Bbox reviewer | After final icon bbox prediction | The red rectangle is tight around only the icon graphic |
+| Automation reviewer | After click/type/save/close actions | The desktop state matches the expected outcome |
+
+If the grid judge rejects a selected cell, the chooser is corrected in the same conversation and must choose another cell. If all judge retries fail, `locate` stops with saved judge crop/result artifacts instead of continuing toward a likely wrong click.
+
+### The Automation Reviewer Pattern
 
 After **every action**, a screenshot is sent to the LLM reviewer:
 
@@ -135,9 +149,10 @@ Edit `.env`:
 ```text
 OPENAI_API_KEY=sk-your-real-key
 OPENAI_MODEL=gpt-4o
+OPENAI_JUDGE_MODEL=
 ```
 
-Default model is `gpt-5.4`. Change `OPENAI_MODEL` to use a different one.
+Default model is `gpt-5.4`. Change `OPENAI_MODEL` to use a different one. Set `OPENAI_JUDGE_MODEL` only if you want the grid judge to use a different OpenAI vision model than the chooser.
 
 ### Before Running
 
@@ -169,6 +184,8 @@ center=850,420
 Artifacts saved:
 - `00-source.png` — original screenshot
 - `01-grid.png`, `01-selected.png` — round 1 grid
+- `01-judge-crop-attempt-1.png` — selected crop sent to the grid judge
+- `01-judge-result-attempt-1.json` — structured judge verdict
 - `02-grid.png`, `02-selected.png` — round 2 grid
 - `final-crop.png` — final cropped region
 - `final-detection.png` — detection with red bbox

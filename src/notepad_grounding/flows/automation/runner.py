@@ -27,6 +27,7 @@ from notepad_grounding.shared.automation import type_text
 from notepad_grounding.shared.automation import wait_for_window
 from notepad_grounding.shared.automation import wait_for_window_close
 from notepad_grounding.shared.capture import capture_desktop
+from notepad_grounding.shared.grid_judge import GridJudgeClient
 from notepad_grounding.shared.llm import OpenAIVisionClient
 from notepad_grounding.shared.llm import VisionClient
 from notepad_grounding.shared.reviewer import OpenAIReviewClient
@@ -107,6 +108,7 @@ def run_automation(
     post_limit: int = 10,
     llm_rounds: int = 3,
     reviewer: ReviewClient | None = None,
+    judge: GridJudgeClient | None = None,
 ) -> AutomationResult:
     run_id = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
     output_dir = output_root / "automation" / run_id
@@ -157,6 +159,7 @@ def run_automation(
                     image,
                     query=query,
                     client=client,
+                    judge=judge,
                     output_root=output_dir / "locate",
                     rounds=llm_rounds,
                 )

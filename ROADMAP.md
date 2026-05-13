@@ -1,269 +1,257 @@
-# Notepad Grounding — Project Plan
+# Notepad Grounding Roadmap
 
-> This document tracks what has been implemented, what needs to be done next, and what we plan to add in the future.
+> Working memory for the take-home project. Keep this file focused on the current goal: make `locate` reliable, explainable, and easy to review.
 
----
+## Current Goal
+
+Build a reliable query-based command:
+
+```text
+uv run notepad-grounding locate --query Notepad --out-dir output
+```
+
+The command should visually find a desktop icon or shortcut, save useful artifacts, and return a deterministic center coordinate. The LLM can choose labeled grid cells and final crop-local boxes; code owns all screen-coordinate math.
 
 ## Status Legend
 
-- `[ ]` — Not started
-- `[~]` — In progress
-- `[x]` — Done
-- `[?]` — Needs investigation / decision
+- `[ ]` Not started
+- `[~]` In progress
+- `[x]` Done
+- `[?]` Needs investigation or decision
 
----
+## Current Working Baseline
 
-## 1. Done (Completed)
+- `[x]` Primary `llm-visual` locate flow exists.
+- `[x]` Coarse-to-fine grid search exists.
+- `[x]` Final crop-local bbox detection exists.
+- `[x]` Final bbox self-review uses `previous_response_id`.
+- `[x]` Full-screen bbox overlay artifact exists.
+- `[x]` `grid-ocr` fallback experiment is preserved.
+- `[x]` Reviewer module exists for post-action automation validation.
+- `[x]` CLI supports `locate --query`.
+- `[x]` Artifacts are saved to output directories.
+- `[x]` `.env` support exists.
+- `[x]` Default model is configurable through `OPENAI_MODEL`.
 
-### LLM Visual Search Flow (Primary)
-- `[x]` Coarse-to-fine grid search (`choose_cell`) with 3-4 rounds
-- `[x]` Iterative bbox refinement (`locate_icon_with_validation`) — LLM returns crop-local bbox, draws red box, LLM self-reviews in same conversation
-- `[x]` Double-click on computed center
-- `[x]` Recovery from wrong-app clicks — Alt+F4 then Escape (safe for apps + desktop)
-- `[x]` Pop-up handling — press Enter on unexpected dialogs
-- `[x]` Error retry — 3 attempts with 1.0s delay per post (matches PDF requirement)
-- `[x]` Reviewer validates every action via screenshots (instructor + Pydantic)
+## Stage 1: Add a Judge During Grid Grounding
 
-### Automation Workflow (Per PDF Section 3)
-- `[x]` Full loop: screenshot → ground → double-click → type → save → close → repeat
-- `[x]` Fetches first 10 posts from JSONPlaceholder API
-- `[x]` Types content in format: `Title: {title}\n\n{body}`
-- `[x]` Saves as `post_{id}.txt` in `Desktop/tjm-project`
-- `[x]** Closes Notepad after EACH post, then re-opens for next (matches PDF workflow)**
-- `[x]` Target directory auto-cleared at start to avoid replace dialogs
-- `[x]` LLM reviewer validates every step:
-  - `[x]` Post-double-click: is the correct app open?
-  - `[x]` Post-type: is the expected text in the editor?
-  - `[x]` Post-save: does the file exist? Handles pop-ups.
-  - `[x]` Post-close: is the file still there?
+**Problem:** The current grid descent is fragile. If the model picks the wrong cell, every later crop is based on the wrong area. Re-running the same prompt can also repeat the same cached mistake.
 
-### Scenarios Already Tested Manually
-- `[x]` Small desktop icons (96px)
-- `[x]` Medium desktop icons (standard)
-- `[x]` Icons moved to different desktop positions
-- `[x]` Non-solid wallpaper background (with drawings)
-- `[x]` Multiple items on desktop
-- `[x]` Notepad already open (click Notepad on taskbar)
+**Goal:** Validate each selected grid crop before committing to it.
 
-### CLI & Project
-- `[x]` Minimal CLI: `locate --query` and `automate --query`
-- `[x]` Environment config via `.env` (API key, model, etc.)
-- `[x]** uv configuration**`
-- `[x]` All artifacts saved to output directory
-- `[x]` Comprehensive README with architecture and usage
-- `[x]` Pushed to GitHub
+- `[ ]` Add a structured judge result for grid validation:
+  - `contains_target: bool`
+  - `confidence: float`
+  - `rationale: str`
+  - optional `visible_evidence: str`
+- `[ ]` After `choose_cell`, crop the selected cell from the original image with the normal padding.
+- `[ ]` Send that selected crop to the judge with the query and ask whether it contains either:
+  - the requested icon/app visual, or
+  - a desktop item label matching the query.
+- `[ ]` If the judge says `contains_target=true`, continue the existing flow.
+- `[ ]` If the judge says `contains_target=false`, continue the original chooser conversation with `previous_response_id` and tell it the selected cell was rejected.
+- `[ ]` Re-prompt the chooser to select a different valid cell, ideally passing rejected cell IDs and the judge rationale.
+- `[ ]` Cap retries per grid round so failures end cleanly instead of looping.
+- `[ ]` Save judge artifacts:
+  - selected crop image
+  - judge decision JSON
+  - retry prompt metadata
+  - rejected cell list
+- `[ ]` Make the judge model configurable separately from the chooser model if useful.
+- `[ ]` Default to the same OpenAI vision model until another vision-capable provider is proven in Windows testing.
+- `[ ]` Add focused tests around the retry/control-flow logic with fake clients.
 
----
+**Acceptance criteria:**
 
-## 2. CRITICAL GAPS — Must Fix Before Interview
+- A wrong selected cell can be rejected without restarting the whole locate command.
+- The next chooser request continues the same conversation instead of replaying the same cached request.
+- The result JSON shows which cells were accepted or rejected.
+- Locate fails with a clear error after bounded retries.
 
-### A. Deliverable: 3 Annotated Screenshots
-**PDF Requirement:** "At least 3 annotated screenshots showing: Icon detected in top-left area, Icon detected in bottom-right area, Icon detected in center of screen"
+## Stage 2: Simplify the Code Structure
 
-- `[ ]` Generate screenshot with Notepad icon in **top-left** + detection overlay
-- `[ ]` Generate screenshot with Notepad icon in **bottom-right** + detection overlay
-- `[ ]` Generate screenshot with Notepad icon in **center** + detection overlay
-- `[ ]` Add these to repo (e.g., `docs/screenshots/`)
+**Problem:** The repo currently feels heavier than the assignment needs. There are many small files and many tests for a take-home proof.
 
-> **This is a hard deliverable. Do not skip.**
+**Goal:** Keep the working behavior while making the project smaller and easier to read.
 
-### B. Broaden Search to Visual Icon (Not Just Label)
-**PDF Requirement:** "The assignment is for a notepad, but it should work for any icon or button even if we don't have the exact image or text beforehand."
+- `[ ]` Trace the actual runtime path for `locate`.
+- `[ ]` Decide which modules are genuinely part of the assignment proof.
+- `[ ]` Keep flow isolation where it helps clarity:
 
-- `[ ]` Update LLM prompt: "Find the Notepad **icon** (the blue notepad graphic), not just the text label"
-- `[ ]` Test with renamed shortcut (e.g., "Notes") — should still find it by visual
-- `[ ]` Test with no label visible — should still work
-- `[ ]` Document this flexibility in README
-
-### C. Handle Multiple Matching Icons
-**PDF Requirement:** "Handle cases where: Multiple matching icons exist" + Bonus: "Detect multiple desktop icons and select the correct one"
-
-- `[ ]` When multiple Notepad icons exist, use LLM to select the correct one
-- `[ ]` Return list of candidates and let LLM rank them
-- `[ ]` Test with multiple Notepad shortcuts on desktop
-
----
-
-## 3. Test Scenarios from PDF — Coverage Matrix
-
-| # | Scenario | Status | Notes |
-|---|----------|--------|-------|
-| 1 | Icon at **top-left** | `[x]` | Tested manually, need screenshot |
-| 2 | Icon at **bottom-right** | `[x]` | Tested manually, need screenshot |
-| 3 | Icon at **center** | `[x]` | Tested manually, need screenshot |
-| 4 | **Small** icon size (96px) | `[x]` | Tested |
-| 5 | **Medium** icon size | `[x]` | Tested |
-| 6 | **Large** icon size | `[ ]` | **NOT TESTED** |
-| 7 | **Light** desktop theme | `[ ]` | **NOT TESTED** |
-| 8 | **Dark** desktop theme | `[ ]` | **NOT TESTED** |
-| 9 | **Solid color** background | `[?]` | Not explicitly tested |
-| 10 | **Custom / busy** background | `[x]` | Tested with drawings |
-| 11 | **Partially obscured** by windows | `[ ]` | **NOT TESTED** |
-| 12 | **Multiple** matching icons | `[ ]` | **NOT TESTED** |
-| 13 | Similar names (Notepad vs Notepad++) | `[ ]` | **NOT TESTED** |
-| 14 | API unavailable / graceful degradation | `[ ]` | **NOT HANDLED** |
-| 15 | Existing files in target directory | `[x]` | Cleared at start |
-| 16 | Retry logic (3 attempts, 1s delay) | `[x]` | `max_retries=3, retry_delay=1.0` |
-| 17 | Window title validation (Notepad launched) | `[x]` | Reviewer validates |
-
----
-
-## 4. Interview Discussion Topics — Be Ready To Answer
-
-### Approach & Design
-- `[x]** Why coarse-to-fine grid over alternatives?**`
-  - **Answer:** Inspired by ScreenSeekeR (ScreenSpot-Pro paper) — "strategically reducing the search area enhances accuracy." We use a cascaded search: full screen → grid cell → crop → finer grid → bbox refinement. This is more robust than single-shot detection.
-- `[x]** Why LLM vision instead of template matching / OCR?**`
-  - **Answer:** Template matching breaks with different backgrounds/themes/sizes. OCR only reads text, not icons. LLM vision understands visual semantics ("the blue notepad icon") and generalizes to arbitrary icons without retraining.
-
-### Failure Cases
-- `[x]** When would detection fail?**`
-  - **Answer:** (1) Icon completely obscured by window, (2) Very busy background with similar colors, (3) Extreme icon sizes we haven't tested, (4) Multiple identical icons, (5) Network/API failure.
-- `[ ]** How would you improve it?**`
-  - **Answer ideas:** (1) Add OCR fallback for text labels, (2) Use local vision model (e.g., Qwen-VL) to reduce latency/cost, (3) Pre-train a small icon detector on synthetic data, (4) Add memory/cache of last known positions.
-
-### Performance
-- `[ ]** How long does detection take?**`
-  - **Action:** Measure and document average time per detection.
-  - **Answer so far:** ~4-6 LLM calls × 2-3s = ~10-15s per detection. Bbox refinement adds 2-3 more calls.
-- `[ ]** Optimization strategies?**`
-  - **Answer ideas:** (1) Use smaller/faster model for coarse rounds, (2) Cache screenshots, (3) Parallelize grid overlay generation, (4) Reduce image resolution for coarse rounds.
-
-### Robustness
-- `[ ]** Different Windows themes (light/dark)?**`
-  - **Status:** Not tested. Need to test.
-- `[ ]** Different icon view sizes?**`
-  - **Status:** Tested small + medium, not large.
-- `[ ]** Custom backgrounds (busy vs solid)?**`
-  - **Status:** Tested busy, not solid.
-- `[ ]** Multiple similar icons?**`
-  - **Status:** Not tested. Need logic to disambiguate.
-- `[ ]** Icons with similar names (Notepad vs Notepad++)?**`
-  - **Status:** Not tested. Visual search should help here.
-
-### Scaling
-- `[x]** Detect any arbitrary desktop icon?**`
-  - **Answer:** Yes, change the query text. But we should make this more explicit — the LLM should search for visual icon features, not just text.
-- `[ ]** Work on different resolutions?**`
-  - **Status:** Only tested on 1920×1080. Grid cell sizes are proportional but need verification.
-- `[ ]** Alternative approaches with more time?**`
-  - **Answer ideas:** (1) Pure OCR pipeline (no LLM, deterministic, offline), (2) Fine-tuned YOLO model for icon detection, (3) Hybrid: OCR for text labels + LLM for icons, (4) Use accessibility APIs as fallback (though assignment forbids this).
-
-### Paper Reference
-- `[x]` Read ScreenSpot-Pro paper (arXiv:2504.07981)
-- `[x]` Key insight: "Strategically reducing the search area enhances accuracy"
-- `[x]` Their method: ScreenSeekeR — cascaded search guided by planner
-- `[x]` **Our approach is aligned:** We do cascaded search (grid → crop → finer grid → bbox), which matches the paper's finding. We can cite this in the interview.
-
----
-
-## 5. Cleanup (Before or After Interview)
-
-The project currently feels over-structured with too many small files and test files. It needs simplification.
-
-### A. Reduce File Count & Complexity
-- `[ ]` **Inspect the flow** — trace the actual execution path and remove unused abstractions
-- `[ ]` **Merge small modules** where it makes sense (e.g., geometry + images)
-- `[ ]` **Remove boilerplate** that was added "just in case"
-- `[ ]` **Reduce test count** — keep only tests that validate actual behavior, not every utility function
-- `[ ]` **Target:** Make the project look like a human wrote it, not 10 AI agents
-
-### B. Simplify Project Structure
-
-Current:
-```
+```text
 src/notepad_grounding/
   shared/
-    llm.py
-    images.py
-    geometry.py
-    automation.py
-    reviewer.py
-    schemas.py
-    env.py
   flows/
     llm_visual_search/
-      flow.py
     grid_ocr/
-      ...
-  cli.py
 ```
 
-Target (simpler):
-```
-src/notepad_grounding/
-  locate.py      # Core visual grounding logic
-  automate.py    # Full automation loop
-  llm.py         # LLM client + schemas
-  utils.py       # Screenshots, image drawing, geometry
-  desktop.py     # Mouse, keyboard, window helpers
-  reviewer.py    # LLM reviewer
-  cli.py
-```
+- `[ ]` Remove dead code or unused helpers.
+- `[ ]` Merge tiny shared modules only when it reduces real friction.
+- `[ ]` Keep `grid-ocr` as a fallback experiment, but make it clearly secondary.
+- `[ ]` Reduce tests to a small, high-value set:
+  - CLI smoke tests
+  - deterministic geometry / bbox mapping tests
+  - judge retry behavior tests
+  - final result serialization tests
+- `[ ]` Remove tests that only lock down unimportant implementation details.
+- `[ ]` Make README and AGENTS match the final structure.
 
-- `[ ]` Consolidate `images.py` + `geometry.py` + `env.py` into `utils.py`
-- `[ ]` Consolidate `automation.py` into `desktop.py`
-- `[ ]` Consolidate `llm.py` + `schemas.py` into `llm.py`
-- `[ ]` Remove `shared/` and `flows/` subdirectories
+**Important decision:** Do not delete useful tests just to make the repo look smaller. Prefer fewer, better tests over no tests.
 
-### C. Code Quality
-- `[ ]` Remove dead code (OCR flow if not used)
-- `[ ]` Add inline comments explaining WHY, not WHAT
-- `[ ]` Reduce test files from ~10 to ~3 focused test files
-- `[ ]` Make imports and dependencies clearer
+## Stage 3: Produce Assignment Evidence Screenshots
 
----
+**Problem:** The assignment expects annotated screenshots showing successful detection in different desktop locations and conditions.
 
-## 6. Future Projects (Post-Interview / Weekend)
+**Goal:** Generate a small, convincing evidence set from Windows.
 
-### A. Split LLM and OCR into Separate Projects
-The current repo has both LLM visual search and grid OCR. They should be separate repositories.
+- `[ ]` Generate top-left scenario:
+  - Notepad shortcut in top-left
+  - normal screen size
+  - small desktop icons
+  - detection overlay saved
+- `[ ]` Generate center scenario:
+  - Notepad shortcut near center
+  - larger icon size
+  - detection overlay saved
+- `[ ]` Generate bottom-right scenario:
+  - Notepad shortcut near bottom-right
+  - changed wallpaper or busier background
+  - detection overlay saved
+- `[ ]` Add optional extra scenario if time allows:
+  - different resolution or display scaling
+  - dark/light theme switch
+  - partially obscured desktop icon
+  - multiple similar desktop items
+- `[ ]` Store final evidence under `docs/screenshots/`.
+- `[ ]` Add short notes explaining each scenario and the returned center coordinate.
+- `[ ]` Confirm final runtime testing happens in Windows, not macOS.
 
-- `[ ]` **Project 1: `notepad-grounding`** — LLM-based visual search (current, simplified)
-- `[ ]` **Project 2: `notepad-grounding-ocr`** — Pure OCR-based approach (no LLM, deterministic)
-  - `[ ]` Use Tesseract / easyocr / pytesseract
-  - `[ ]` Build a deterministic grid overlay
-  - `[ ]` Match text labels to icon positions
-  - `[ ]` No API calls needed, fully offline
-  - `[ ]` Can be a good fallback or comparison benchmark
+**Acceptance criteria:**
 
-### B. OCR Flow Implementation (Weekend Task)
-- `[ ]` Research best OCR library for Windows desktop icons
-- `[ ]` Implement icon detection via OCR (text labels)
-- `[ ]` Map OCR text positions to icon centers
-- `[ ]` Test on same scenarios as LLM flow
-- `[ ]` Compare accuracy and speed vs LLM flow
+- At least 3 annotated screenshots are in the repo.
+- The screenshots cover top-left, center, and bottom-right positions.
+- Each screenshot has a matching result artifact or coordinate note.
 
----
+## Stage 4: Search by Icon Semantics and Label
 
-## 7. Quick Checklist Before Interview
+**Problem:** The current prompt can over-focus on the label text. The assignment wants an extensible visual grounding system, not just OCR-like label matching.
 
-- [ ] **3 annotated screenshots** generated and in repo
-- [ ] **Large icon size** tested
-- [ ] **Light theme** tested
-- [ ] **Dark theme** tested
-- [ ] **Partially obscured icon** tested
-- [ ] **Multiple icons** tested
-- [ ] **Renamed shortcut** tested (visual search, not label)
-- [ ] **API degradation** handled (try/except around fetch)
-- [ ] **Performance measured** and documented
-- [ ] **Code cleaned up** and readable
-- [ ] **README accurate** and up-to-date
-- [ ] **Repo pushed** to GitHub
-- [ ] (Optional) **OCR version** working as a backup demo
+**Goal:** Treat the query as both a possible label and a semantic app/icon target.
 
----
+- `[ ]` Update chooser prompts to search for the desktop item matching the query by:
+  - visual icon/app semantics, and
+  - visible label text when available.
+- `[ ]` Update final bbox prompt to box only the icon graphic, not the label.
+- `[ ]` Add judge wording that accepts either visual evidence or a matching label, but asks for the reason.
+- `[ ]` Test a renamed Notepad shortcut, such as `Notes`.
+- `[ ]` Test a case where the label is hard to read or not useful.
+- `[ ]` Test similar names, such as Notepad vs Notepad++.
+- `[ ]` Decide how to handle multiple matching candidates:
+  - return candidates and rank them, or
+  - ask the LLM to pick the best candidate with rationale.
+- `[ ]` Document the behavior in README as query-based visual grounding, not label-only search.
 
-## 8. Notes & Decisions Log
+**Acceptance criteria:**
+
+- `--query Notepad` can still find the Notepad shortcut when the label is not exactly `Notepad`.
+- The final click center is computed from the icon graphic bbox.
+- README clearly explains the icon-plus-label search behavior.
+
+## Coverage Matrix
+
+| Scenario | Status | Stage | Notes |
+|---|---:|---:|---|
+| Icon at top-left | `[x]` manual / `[ ]` artifact | 3 | Need final annotated screenshot |
+| Icon at center | `[x]` manual / `[ ]` artifact | 3 | Need final annotated screenshot |
+| Icon at bottom-right | `[x]` manual / `[ ]` artifact | 3 | Need final annotated screenshot |
+| Small icon size | `[x]` | 3 | Reconfirm in final evidence run |
+| Medium icon size | `[x]` | 3 | Reconfirm in final evidence run |
+| Large icon size | `[ ]` | 3 | Add if time allows |
+| Light theme | `[ ]` | 3 | Not explicitly tested |
+| Dark theme | `[ ]` | 3 | Not explicitly tested |
+| Solid background | `[?]` | 3 | Not explicitly tested |
+| Busy/custom background | `[x]` | 3 | Tested manually with drawings |
+| Partially obscured icon | `[ ]` | 3/4 | Useful robustness case |
+| Multiple matching icons | `[ ]` | 4 | Needs selection strategy |
+| Similar names | `[ ]` | 4 | Notepad vs Notepad++ |
+| Renamed shortcut | `[ ]` | 4 | Tests visual semantics |
+| Different resolution | `[ ]` | 3 | Only 1920x1080 is assumed |
+| API unavailable | `[ ]` | Later | Relevant only to automation flow |
+| Existing files in target directory | `[x]` | Later | Existing automation clears directory |
+| Retry logic after actions | `[x]` | Later | Existing automation has retry/reviewer |
+| Wrong app recovery | `[x]` | Later | Existing automation closes wrong app |
+
+## Interview Prep
+
+### Architecture Answers
+
+- `[x]` Coarse-to-fine grid is used because it keeps coordinate math deterministic while letting the LLM make visual choices.
+- `[x]` The design aligns with ScreenSeekeR / ScreenSpot-Pro: reduce the search area before precise localization.
+- `[x]` LLM vision is used because template matching is brittle across wallpapers, themes, icon sizes, and renamed shortcuts.
+- `[x]` OCR-only is kept as a fallback experiment because labels help, but the assignment needs visual icon grounding.
+
+### Robustness Answers To Prepare
+
+- `[ ]` Explain the new judge layer for rejecting bad grid choices.
+- `[ ]` Explain bounded retries and artifact logging.
+- `[ ]` Explain how multiple similar icons would be ranked.
+- `[ ]` Explain when the approach still fails:
+  - icon fully hidden
+  - ambiguous identical shortcuts
+  - model/provider outage
+  - unsupported resolution/scaling not tested
+
+### Performance Answers To Prepare
+
+- `[ ]` Measure average locate time on Windows.
+- `[ ]` Record number of LLM calls per successful locate.
+- `[ ]` Mention optimization options:
+  - smaller/faster model for judging
+  - fewer grid rounds after confidence is high
+  - cached last-known positions
+  - parallel or cheaper candidate checks
+
+## Later / Parking Lot
+
+These were already in previous notes and should not be lost, but they are not the next priority unless the assignment scope changes.
+
+- `[ ]` Full automation loop:
+  - fetch posts
+  - open Notepad
+  - type content
+  - save files
+  - close and repeat
+- `[ ]` Graceful handling for JSONPlaceholder/API failure.
+- `[ ]` Replace-file popup handling.
+- `[ ]` Keep or split OCR into a separate future project.
+- `[ ]` Explore a pure OCR version for comparison.
+- `[ ]` Consider a local vision model to reduce cost/latency.
+- `[ ]` Consider synthetic training data or a small detector if the task grows beyond the take-home.
+- `[ ]` Consider memory of last known icon positions as an optimization, not as the primary proof.
+
+## Quick Checklist Before Final Submission
+
+- `[ ]` Stage 1 judge/retry flow implemented and tested.
+- `[ ]` Stage 2 cleanup completed without breaking `locate`.
+- `[ ]` Stage 3 screenshots generated in Windows.
+- `[ ]` Stage 4 prompt behavior tested with renamed/similar labels.
+- `[ ]` README updated and accurate.
+- `[ ]` `.env.example` matches required config.
+- `[ ]` `uv run pytest -v` passes.
+- `[ ]` `uv run notepad-grounding locate --query Notepad --out-dir output` works in Windows.
+- `[ ]` Repo pushed to GitHub.
+
+## Decisions Log
 
 | Date | Decision | Context |
-|------|----------|---------|
-| 2025-05-13 | Use Alt+F4 + Escape for closing wrong apps | Alt+F4 closes apps; Escape dismisses shutdown dialog on desktop |
-| 2025-05-13 | Use `previous_response_id` for LLM self-correction in bbox refinement | Keeps conversation context, avoids re-uploading images |
-| 2025-05-13 | Use `instructor` library for structured LLM outputs | Eliminates JSON parsing errors, guarantees Pydantic schema |
-| 2025-05-13 | Coarse-to-fine grid matches ScreenSeekeR approach | ScreenSpot-Pro paper says "reducing search area enhances accuracy" |
-| 2025-05-13 | Close Notepad after each post, re-open for next | Matches PDF workflow exactly |
+|---|---|---|
+| 2026-05-13 | Keep `llm-visual` as the primary flow | OCR remains a fallback experiment |
+| 2026-05-13 | Add a judge before committing to each selected grid crop | Prevents wrong-cell descent and repeated cached mistakes |
+| 2026-05-13 | Use `previous_response_id` for correction loops | Keeps conversation context when rejecting a choice or refining a bbox |
+| 2026-05-13 | Keep screen-coordinate math in deterministic code | LLM may choose cells or crop-local bboxes only |
+| 2026-05-13 | Final evidence must be produced on Windows | macOS/Parallels host behavior is not enough for final testing |
 
 ---
 
-*Last updated: 2025-05-13*
+*Last updated: 2026-05-13*

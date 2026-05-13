@@ -32,3 +32,18 @@ class ReviewResultModel(BaseModel):
         description="Recovery action like 'proceed', 'close window and retry', 'click Replace button'",
     )
     rationale: str = Field(..., description="Explanation of the current state")
+
+
+class GridJudgeResultModel(BaseModel):
+    """Structured output for validating a selected grid crop."""
+
+    contains_target: bool = Field(
+        ...,
+        description="True when the crop contains the requested icon/app visual or a matching label.",
+    )
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence 0-1")
+    rationale: str = Field(..., description="Why the crop should be accepted or rejected")
+    visible_evidence: str = Field(
+        "",
+        description="Short description of visible evidence, such as icon appearance or label text.",
+    )

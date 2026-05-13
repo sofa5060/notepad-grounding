@@ -14,6 +14,7 @@ from notepad_grounding.shared.api import ApiError
 from notepad_grounding.shared.capture import CaptureError
 from notepad_grounding.shared.capture import capture_desktop
 from notepad_grounding.shared.capture import load_image
+from notepad_grounding.shared.grid_judge import OpenAIGridJudgeClient
 from notepad_grounding.shared.llm import OpenAIVisionClient
 
 
@@ -68,10 +69,12 @@ def run_locate(args: argparse.Namespace) -> int:
 
     try:
         client = OpenAIVisionClient()
+        judge = OpenAIGridJudgeClient()
         result = run_llm_visual_search(
             image,
             query=args.query,
             client=client,
+            judge=judge,
             output_root=Path("output") / "llm_visual_search",
             rounds=3,
         )
@@ -90,9 +93,11 @@ def run_locate(args: argparse.Namespace) -> int:
 def run_automate(args: argparse.Namespace) -> int:
     try:
         client = OpenAIVisionClient()
+        judge = OpenAIGridJudgeClient()
         result = run_automation(
             query=args.query,
             client=client,
+            judge=judge,
             output_root=Path("output"),
             max_retries=3,
             retry_delay=1.0,

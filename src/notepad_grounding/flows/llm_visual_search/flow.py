@@ -12,12 +12,24 @@ from PIL import Image
 from notepad_grounding.shared.geometry import Box
 from notepad_grounding.shared.geometry import build_grid_cells
 from notepad_grounding.shared.geometry import expand_box
+from notepad_grounding.shared.grid_judge import GridJudgeClient
 from notepad_grounding.shared.images import crop_box
 from notepad_grounding.shared.images import draw_box
 from notepad_grounding.shared.images import draw_grid_cells
-from notepad_grounding.shared.llm import CellChoice
-from notepad_grounding.shared.llm import CellsChoice
 from notepad_grounding.shared.llm import VisionClient
+
+
+@dataclass(frozen=True)
+class GridJudgeAttempt:
+    attempt_index: int
+    selected_cell_id: str
+    selected_box: Box
+    judged_crop_box: Box
+    crop_image: str
+    contains_target: bool
+    confidence: float
+    rationale: str
+    visible_evidence: str
 
 
 @dataclass(frozen=True)
@@ -29,6 +41,7 @@ class VisualSearchStep:
     confidence: float
     rationale: str
     grid_image: str
+    judge_attempts: list[GridJudgeAttempt]
 
 
 @dataclass(frozen=True)
@@ -67,6 +80,8 @@ def run_llm_visual_search(
     final_grid: tuple[int, int] = (5, 5),
     crop_padding: int = 40,
     final_crop_max_size: tuple[int, int] = (450, 350),
+    judge: GridJudgeClient | None = None,
+    max_judge_retries: int = 2,
 ) -> VisualSearchResult:
     start_time = time.perf_counter()
     run_id = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -101,8 +116,56 @@ def run_llm_visual_search(
             image=Image.open(grid_path).convert("RGB"),
             cell_ids=[cell.id for cell in local_cells],
         )
+
+        judge_attempts: list[GridJudgeAttempt] = []
+        rejected_cell_ids: list[str] = []
         selected_local = _cell_by_id(local_cells, choice.cell_id)
         selected_box = _offset_box(selected_local.box, offset_x=current_box[0], offset_y=current_box[1])
+
+        if judge is not None:
+            for attempt_index in range(1, max_judge_retries + 2):
+                selected_local = _cell_by_id(local_cells, choice.cell_id)
+                selected_box = _offset_box(selected_local.box, offset_x=current_box[0], offset_y=current_box[1])
+                judged_crop_box = expand_box(selected_box, padding=crop_padding, bounds=bounds)
+                judged_crop = crop_box(image, judged_crop_box)
+                judge_crop_path = output_dir / f"{round_index:02d}-judge-crop-attempt-{attempt_index}.png"
+                judged_crop.save(judge_crop_path)
+
+                judge_result = judge.judge_crop(query=query, image=judged_crop)
+                judge_result_path = output_dir / f"{round_index:02d}-judge-result-attempt-{attempt_index}.json"
+                attempt = GridJudgeAttempt(
+                    attempt_index=attempt_index,
+                    selected_cell_id=choice.cell_id,
+                    selected_box=selected_box,
+                    judged_crop_box=judged_crop_box,
+                    crop_image=str(judge_crop_path),
+                    contains_target=judge_result.contains_target,
+                    confidence=judge_result.confidence,
+                    rationale=judge_result.rationale,
+                    visible_evidence=judge_result.visible_evidence,
+                )
+                judge_result_path.write_text(json.dumps(asdict(attempt), indent=2), encoding="utf-8")
+                judge_attempts.append(attempt)
+
+                if judge_result.contains_target:
+                    break
+
+                rejected_cell_ids.append(choice.cell_id)
+                if attempt_index > max_judge_retries:
+                    raise ValueError(
+                        "Grid judge rejected all attempts "
+                        f"for round {round_index}; rejected={rejected_cell_ids}; "
+                        f"last_rationale={judge_result.rationale}"
+                    )
+
+                choice = client.revise_cell_choice(
+                    query=query,
+                    image=Image.open(grid_path).convert("RGB"),
+                    cell_ids=[cell.id for cell in local_cells],
+                    rejected_cell_ids=rejected_cell_ids,
+                    judge_rationale=judge_result.rationale,
+                    previous_response_id=choice.response_id,
+                )
 
         selected_grid_path = output_dir / f"{round_index:02d}-selected.png"
         draw_grid_cells(
@@ -121,6 +184,7 @@ def run_llm_visual_search(
                 confidence=choice.confidence,
                 rationale=choice.rationale,
                 grid_image=str(selected_grid_path),
+                judge_attempts=judge_attempts,
             )
         )
         current_box = expand_box(selected_box, padding=crop_padding, bounds=bounds)

@@ -17,6 +17,18 @@ class VisionClient(Protocol):
     def choose_cell(self, *, query: str, image: Image.Image, cell_ids: list[str]) -> "CellChoice":
         """Choose the grid cell most likely to contain the visual target."""
 
+    def revise_cell_choice(
+        self,
+        *,
+        query: str,
+        image: Image.Image,
+        cell_ids: list[str],
+        rejected_cell_ids: list[str],
+        judge_rationale: str,
+        previous_response_id: str | None,
+    ) -> "CellChoice":
+        """Choose a different grid cell after a judge rejected previous choices."""
+
     def choose_cells(self, *, query: str, image: Image.Image, cell_ids: list[str]) -> "CellsChoice":
         """Choose all grid cells that contain any part of the visual target."""
 
@@ -29,6 +41,7 @@ class CellChoice:
     cell_id: str
     confidence: float
     rationale: str
+    response_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -79,7 +92,59 @@ class OpenAIVisionClient:
                 }
             ],
         )
-        return parse_cell_choice(response.output_text, valid_cell_ids=cell_ids)
+        choice = parse_cell_choice(response.output_text, valid_cell_ids=cell_ids)
+        return CellChoice(
+            cell_id=choice.cell_id,
+            confidence=choice.confidence,
+            rationale=choice.rationale,
+            response_id=response.id,
+        )
+
+    def revise_cell_choice(
+        self,
+        *,
+        query: str,
+        image: Image.Image,
+        cell_ids: list[str],
+        rejected_cell_ids: list[str],
+        judge_rationale: str,
+        previous_response_id: str | None,
+    ) -> CellChoice:
+        remaining = [cell_id for cell_id in cell_ids if cell_id not in set(rejected_cell_ids)]
+        prompt = (
+            "You are helping a Windows desktop visual grounding system. "
+            f"You previously selected grid cell(s) {', '.join(rejected_cell_ids)} for target {query!r}, "
+            "but a reviewer inspected the selected crop and rejected it because it did not contain the target.\n\n"
+            f"Reviewer rationale: {judge_rationale}\n\n"
+            f"Choose a different grid cell that most likely contains the desktop icon or shortcut for {query!r}. "
+            f"Do NOT choose any rejected cell: {', '.join(rejected_cell_ids)}. "
+            "Return JSON only with keys cell_id, confidence, rationale. "
+            f"Valid cell_id values are: {', '.join(remaining)}. "
+            "Do not return pixel coordinates."
+        )
+        request = {
+            "model": self._model,
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": prompt},
+                        {"type": "input_image", "image_url": image_to_data_url(image), "detail": "high"},
+                    ],
+                }
+            ],
+        }
+        if previous_response_id:
+            request["previous_response_id"] = previous_response_id
+
+        response = self._client.responses.create(**request)
+        choice = parse_cell_choice(response.output_text, valid_cell_ids=remaining)
+        return CellChoice(
+            cell_id=choice.cell_id,
+            confidence=choice.confidence,
+            rationale=choice.rationale,
+            response_id=response.id,
+        )
 
     def choose_cells(self, *, query: str, image: Image.Image, cell_ids: list[str]) -> CellsChoice:
         prompt = (
