@@ -134,9 +134,9 @@ def run_automation(
                 type_text(content)
                 logger.info("[%s] Typed post content", filename)
 
-                # 5. Save file
-                press_hotkey("ctrl", "s")
-                sleep(1.0)  # wait for Save As dialog
+                # 5. Save file (Ctrl+Shift+S to open Save As dialog)
+                press_hotkey("ctrl", "shift", "s")
+                sleep(1.5)  # wait for Save As dialog
                 # Type full absolute path
                 type_text(str(full_path), interval=0.01)
                 sleep(0.5)  # let the path register

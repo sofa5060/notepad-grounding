@@ -21,7 +21,7 @@ def type_text(text: str, *, interval: float = 0.01) -> None:
 
 
 def press_hotkey(*keys: str) -> None:
-    """Press a key combination, e.g. press_hotkey('ctrl', 's').
+    """Press a key combination, e.g. press_hotkey('ctrl', 'shift', 's').
 
     On macOS controlling a Windows VM through Parallels, Ctrl shortcuts
     must be sent as Command so Parallels translates them correctly.
@@ -32,13 +32,7 @@ def press_hotkey(*keys: str) -> None:
     if platform.system() == "Darwin":
         mapped = ["command" if k == "ctrl" else k for k in mapped]
 
-    # Hold keys down with a small pause so the VM registers them
-    for key in mapped:
-        pyautogui.keyDown(key)
-        time.sleep(0.05)
-    for key in reversed(mapped):
-        pyautogui.keyUp(key)
-        time.sleep(0.05)
+    pyautogui.hotkey(*mapped)
 
 
 def sleep(seconds: float) -> None:
