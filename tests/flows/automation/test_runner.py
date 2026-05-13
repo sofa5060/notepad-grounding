@@ -8,6 +8,7 @@ from notepad_grounding.flows.automation.runner import PostResult
 from notepad_grounding.flows.automation.runner import run_automation
 from notepad_grounding.shared.llm import CellChoice
 from notepad_grounding.shared.llm import CellsChoice
+from notepad_grounding.shared.reviewer import ReviewResult
 
 
 class FakeVisionClient:
@@ -16,6 +17,17 @@ class FakeVisionClient:
 
     def choose_cells(self, *, query, image, cell_ids):
         return CellsChoice(cell_ids=cell_ids[:1], confidence=0.9, rationale="test")
+
+
+class FakeReviewClient:
+    """Always returns success so tests don't need real OpenAI calls."""
+
+    def review_state(self, *, action, expected, image):
+        return ReviewResult(
+            status="success",
+            action_needed="proceed",
+            rationale="fake reviewer says all good",
+        )
 
 
 def test_run_automation_overwrites_existing_files(tmp_path):
@@ -49,9 +61,11 @@ def test_run_automation_overwrites_existing_files(tmp_path):
         mock_capture.return_value = mock_image
 
         client = FakeVisionClient()
+        reviewer = FakeReviewClient()
         result = run_automation(
             query="Notepad",
             client=client,
+            reviewer=reviewer,
             output_root=tmp_path,
             timestamp="test",
             max_retries=1,
@@ -107,9 +121,11 @@ def test_run_automation_retries_on_failure(tmp_path):
 
         with patch("notepad_grounding.flows.automation.runner.run_llm_visual_search", side_effect=flaky_llm):
             client = FakeVisionClient()
+            reviewer = FakeReviewClient()
             result = run_automation(
                 query="Notepad",
                 client=client,
+                reviewer=reviewer,
                 output_root=tmp_path,
                 timestamp="test",
                 max_retries=3,
@@ -149,9 +165,11 @@ def test_run_automation_fails_after_max_retries(tmp_path):
 
         with patch("notepad_grounding.flows.automation.runner.run_llm_visual_search", side_effect=always_fail):
             client = FakeVisionClient()
+            reviewer = FakeReviewClient()
             result = run_automation(
                 query="Notepad",
                 client=client,
+                reviewer=reviewer,
                 output_root=tmp_path,
                 timestamp="test",
                 max_retries=2,

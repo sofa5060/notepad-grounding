@@ -108,3 +108,18 @@ def wait_for_window_close(title_substring: str, *, timeout: float = 5.0, poll_in
         time.sleep(poll_interval)
         elapsed += poll_interval
     return False
+
+
+def close_active_window() -> None:
+    """Close the currently active window using Ctrl+W (or Cmd+W on macOS)."""
+    press_hotkey("ctrl", "w")
+
+
+def click_at(x: int, y: int, *, clicks: int = 1, duration: float = 0.5) -> None:
+    """Click at screen coordinates."""
+    import pyautogui
+    pyautogui.moveTo(x, y, duration=duration)
+    if clicks == 2:
+        pyautogui.doubleClick()
+    else:
+        pyautogui.click()

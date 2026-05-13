@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import asdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -12,6 +11,8 @@ from PIL import Image
 from notepad_grounding.flows.llm_visual_search.flow import run_llm_visual_search
 from notepad_grounding.shared.api import ApiError
 from notepad_grounding.shared.api import fetch_posts
+from notepad_grounding.shared.automation import click_at
+from notepad_grounding.shared.automation import close_active_window
 from notepad_grounding.shared.automation import double_click
 from notepad_grounding.shared.automation import ensure_directory
 from notepad_grounding.shared.automation import get_active_window_title
@@ -25,6 +26,9 @@ from notepad_grounding.shared.automation import wait_for_window_close
 from notepad_grounding.shared.capture import capture_desktop
 from notepad_grounding.shared.llm import OpenAIVisionClient
 from notepad_grounding.shared.llm import VisionClient
+from notepad_grounding.shared.reviewer import OpenAIReviewClient
+from notepad_grounding.shared.reviewer import ReviewClient
+from notepad_grounding.shared.reviewer import ReviewResult
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +46,51 @@ class AutomationResult:
 @dataclass(frozen=True)
 class PostResult:
     post_id: int
-    status: str  # "success", "failed"
+    status: str
     filename: str
     center: tuple[int, int] | None
     error: str | None
+
+
+def _review_and_recover(
+    reviewer: ReviewClient,
+    action: str,
+    expected: str,
+    image: Image.Image,
+) -> ReviewResult:
+    """Ask the reviewer to check the screen state and return its verdict."""
+    logger.info("[REVIEW] %s | Expected: %s", action, expected)
+    result = reviewer.review_state(action=action, expected=expected, image=image)
+    logger.info("[REVIEW] status=%s action_needed=%s rationale=%s", result.status, result.action_needed, result.rationale)
+    return result
+
+
+def _handle_recovery(action_needed: str) -> None:
+    """Execute a recovery action suggested by the reviewer."""
+    action_lower = action_needed.lower()
+
+    if "close" in action_lower and "window" in action_lower:
+        logger.info("[RECOVER] Closing active window")
+        close_active_window()
+        sleep(1.0)
+
+    elif "click" in action_lower and "replace" in action_lower:
+        logger.info("[RECOVER] Clicking Replace button (Enter)")
+        press_hotkey("return")
+        sleep(1.0)
+
+    elif "click" in action_lower and "yes" in action_lower:
+        logger.info("[RECOVER] Clicking Yes button (Enter)")
+        press_hotkey("return")
+        sleep(1.0)
+
+    elif "wait" in action_lower:
+        logger.info("[RECOVER] Waiting longer")
+        sleep(2.0)
+
+    else:
+        logger.info("[RECOVER] Generic recovery: %s", action_needed)
+        sleep(1.0)
 
 
 def run_automation(
@@ -58,10 +103,14 @@ def run_automation(
     retry_delay: float = 1.0,
     post_limit: int = 10,
     llm_rounds: int = 3,
+    reviewer: ReviewClient | None = None,
 ) -> AutomationResult:
     run_id = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
     output_dir = output_root / "automation" / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Use default reviewer if none provided
+    reviewer = reviewer or OpenAIReviewClient()
 
     logger.info("Starting automation for query=%r", query)
 
@@ -96,7 +145,7 @@ def run_automation(
                     max_retries,
                 )
 
-                # 1. Capture screenshot and locate icon
+                # === STEP 1: Ground icon ===
                 image = capture_desktop()
                 result = run_llm_visual_search(
                     image,
@@ -108,54 +157,99 @@ def run_automation(
                 center = result.center
                 logger.info("[%s] Icon found at %s", filename, center)
 
-                # 2. Double-click to launch Notepad
+                # === STEP 2: Click ===
                 double_click(*center)
                 logger.info("[%s] Double-clicked at %s", filename, center)
+                sleep(2.0)
 
-                # 3. Wait for Notepad to open
-                logger.info("[%s] Waiting for Notepad window...", filename)
-                if not wait_for_window("Notepad", timeout=5.0):
-                    active = get_active_window_title()
-                    raise RuntimeError(
-                        f"Notepad did not become active window. Current: {active!r}"
-                    )
-                logger.info("[%s] Notepad is active", filename)
+                # === STEP 3: Review — did Notepad open? ===
+                review = _review_and_recover(
+                    reviewer,
+                    action=f"Double-clicked the '{query}' desktop icon at {center}",
+                    expected="Notepad window is open and active",
+                    image=capture_desktop(),
+                )
+                if review.status == "wrong_app":
+                    logger.warning("[%s] Reviewer detected wrong app: %s", filename, review.rationale)
+                    _handle_recovery(review.action_needed)
+                    raise RuntimeError(f"Wrong app opened: {review.rationale}")
+                elif review.status in ("error", "retry"):
+                    _handle_recovery(review.action_needed)
+                    raise RuntimeError(f"Open failed: {review.rationale}")
+                logger.info("[%s] Reviewer confirmed: Notepad is open", filename)
 
-                # 4. Type content
+                # === STEP 4: Type content ===
                 content = f"Title: {title}\n\n{body}"
                 type_text(content)
-                logger.info("[%s] Typed post content", filename)
+                logger.info("[%s] Typed post content (%d chars)", filename, len(content))
+                sleep(0.5)
 
-                # 5. Save file (Ctrl+Shift+S to open Save As dialog)
+                # === STEP 5: Review — is text correct? ===
+                review = _review_and_recover(
+                    reviewer,
+                    action=f"Typed post content into Notepad",
+                    expected="Notepad shows the typed post text",
+                    image=capture_desktop(),
+                )
+                if review.status != "success":
+                    logger.warning("[%s] Reviewer detected typing issue: %s", filename, review.rationale)
+                else:
+                    logger.info("[%s] Reviewer confirmed: text is correct", filename)
+
+                # === STEP 6: Save ===
                 press_hotkey("ctrl", "shift", "s")
-                sleep(1.5)  # wait for Save As dialog
-                # Type full absolute path
+                sleep(1.5)
                 type_text(str(full_path), interval=0.01)
-                sleep(0.5)  # let the path register
+                sleep(0.5)
                 press_hotkey("return")
-                sleep(0.5)  # wait for save to complete
-                logger.info("[%s] Saved to %s", filename, full_path)
+                sleep(1.0)
+                logger.info("[%s] Save triggered", filename)
 
-                # 6. Verify Notepad is still active before closing
+                # === STEP 7: Review — did save succeed? Handle pop-ups ===
+                for _ in range(3):  # up to 3 review cycles for pop-ups
+                    review = _review_and_recover(
+                        reviewer,
+                        action=f"Pressed Save with path {full_path}",
+                        expected="File is saved, no dialogs remain, Notepad is active",
+                        image=capture_desktop(),
+                    )
+                    if review.status == "success":
+                        logger.info("[%s] Reviewer confirmed: save succeeded", filename)
+                        break
+                    elif review.status == "pop_up":
+                        logger.info("[%s] Reviewer detected pop-up: %s", filename, review.rationale)
+                        _handle_recovery(review.action_needed)
+                        sleep(1.0)
+                    elif review.status == "wrong_app":
+                        logger.warning("[%s] Reviewer detected wrong window: %s", filename, review.rationale)
+                        _handle_recovery(review.action_needed)
+                        raise RuntimeError(f"Save went wrong: {review.rationale}")
+                    else:
+                        _handle_recovery(review.action_needed)
+                        break
+                else:
+                    raise RuntimeError("Pop-up handling exceeded max cycles")
+
+                # === STEP 8: Close ===
                 if not is_window_active("Notepad"):
                     active = get_active_window_title()
-                    raise RuntimeError(
-                        f"Notepad is no longer active before close. Current: {active!r}"
-                    )
-                logger.info("[%s] Closing Notepad...", filename)
+                    raise RuntimeError(f"Notepad not active before close. Current: {active!r}")
                 press_hotkey("ctrl", "shift", "w")
+                logger.info("[%s] Close triggered", filename)
+                sleep(1.0)
 
-                # 7. Wait for Notepad to actually close
-                logger.info("[%s] Waiting for Notepad to close...", filename)
-                if not wait_for_window_close("Notepad", timeout=5.0):
-                    active = get_active_window_title()
-                    logger.warning(
-                        "[%s] Notepad may still be active after close attempt. Current: %r",
-                        filename,
-                        active,
-                    )
+                # === STEP 9: Review — did Notepad close? ===
+                review = _review_and_recover(
+                    reviewer,
+                    action="Closed Notepad",
+                    expected="Notepad is closed, desktop is visible",
+                    image=capture_desktop(),
+                )
+                if review.status != "success":
+                    logger.warning("[%s] Reviewer detected close issue: %s", filename, review.rationale)
+                    _handle_recovery(review.action_needed)
                 else:
-                    logger.info("[%s] Notepad closed confirmed", filename)
+                    logger.info("[%s] Reviewer confirmed: Notepad closed", filename)
 
                 status = "success"
                 succeeded += 1
