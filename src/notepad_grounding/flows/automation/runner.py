@@ -136,11 +136,12 @@ def run_automation(
 
                 # 5. Save file
                 press_hotkey("ctrl", "s")
-                sleep(0.5)
+                sleep(1.0)  # wait for Save As dialog
                 # Type full absolute path
-                type_text(str(full_path))
-                sleep(0.2)
+                type_text(str(full_path), interval=0.01)
+                sleep(0.5)  # let the path register
                 press_hotkey("return")
+                sleep(0.5)  # wait for save to complete
                 logger.info("[%s] Saved to %s", filename, full_path)
 
                 # 6. Wait for save then close Notepad
