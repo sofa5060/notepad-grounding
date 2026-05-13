@@ -122,51 +122,28 @@ def run_llm_visual_search(
         )
         current_box = expand_box(selected_box, padding=crop_padding, bounds=bounds)
 
-    # Final fine-grained grid step: ask the LLM for all cells that overlap the icon.
+    # Final step: iterative bbox refinement with validation
     final_crop = crop_box(image, current_box)
     final_crop_path = output_dir / "final-crop.png"
     final_crop.save(final_crop_path)
 
-    fine_rows, fine_cols = final_grid
-    prefix = "F-"
-    local_cells = build_grid_cells(
-        (0, 0, final_crop.width, final_crop.height),
-        rows=fine_rows,
-        cols=fine_cols,
-        prefix=prefix,
-    )
-    grid_path = output_dir / "final-grid.png"
-    draw_grid_cells(final_crop, local_cells, output_path=grid_path)
+    detection = client.locate_icon_with_validation(query=query, image=final_crop)
+    if not detection.target_visible:
+        raise ValueError(f"LLM reported target not visible in final crop: {detection.rationale}")
 
-    choice = client.choose_cells(
-        query=query,
-        image=Image.open(grid_path).convert("RGB"),
-        cell_ids=[cell.id for cell in local_cells],
-    )
-    if not choice.cell_ids:
-        raise ValueError(f"LLM reported no cells for the target in final crop: {choice.rationale}")
-
-    selected_locals = [_cell_by_id(local_cells, cid) for cid in choice.cell_ids]
-    union_local = _union_boxes([cell.box for cell in selected_locals])
-    icon_box = _offset_box(union_local, offset_x=current_box[0], offset_y=current_box[1])
-
-    selected_grid_path = output_dir / "final-selected.png"
-    draw_grid_cells(
-        final_crop,
-        local_cells,
-        output_path=selected_grid_path,
-        selected_cell_ids=choice.cell_ids,
-    )
+    icon_box = _offset_box(detection.icon_bbox, offset_x=current_box[0], offset_y=current_box[1])
+    final_detection_path = output_dir / "final-detection.png"
+    draw_box(final_crop, detection.icon_bbox, output_path=final_detection_path, label="icon_bbox")
 
     center = ((icon_box[0] + icon_box[2]) // 2, (icon_box[1] + icon_box[3]) // 2)
     final_detection = FinalDetectionStep(
         crop_box=current_box,
-        icon_bbox_local=union_local,
+        icon_bbox_local=detection.icon_bbox,
         icon_bbox_screen=icon_box,
-        confidence=choice.confidence,
-        rationale=choice.rationale,
+        confidence=detection.confidence,
+        rationale=detection.rationale,
         crop_image=str(final_crop_path),
-        detection_image=str(selected_grid_path),
+        detection_image=str(final_detection_path),
     )
     result_path = output_dir / "result.json"
     result = VisualSearchResult(

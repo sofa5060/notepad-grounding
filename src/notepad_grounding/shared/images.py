@@ -59,13 +59,26 @@ def draw_box(
     label: str,
     color: tuple[int, int, int] = (255, 0, 0),
 ) -> Path:
+    annotated = draw_box_on_image(image, box, label=label, color=color)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    annotated.save(output_path)
+    return output_path
+
+
+def draw_box_on_image(
+    image: Image.Image,
+    box: Box,
+    *,
+    label: str | None = None,
+    color: tuple[int, int, int] = (255, 0, 0),
+) -> Image.Image:
+    """Draw a bounding box on a copy of the image and return it (does not save)."""
     annotated = image.convert("RGB").copy()
     draw = ImageDraw.Draw(annotated)
     font = ImageFont.load_default()
     draw.rectangle(box, outline=color, width=3)
-    left, top, right, bottom = draw.textbbox((box[0] + 4, max(0, box[1] - 14)), label, font=font)
-    draw.rectangle((left - 2, top - 1, right + 2, bottom + 1), fill=(255, 255, 255))
-    draw.text((box[0] + 4, max(0, box[1] - 14)), label, fill=color, font=font)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    annotated.save(output_path)
-    return output_path
+    if label:
+        left, top, right, bottom = draw.textbbox((box[0] + 4, max(0, box[1] - 14)), label, font=font)
+        draw.rectangle((left - 2, top - 1, right + 2, bottom + 1), fill=(255, 255, 255))
+        draw.text((box[0] + 4, max(0, box[1] - 14)), label, fill=color, font=font)
+    return annotated

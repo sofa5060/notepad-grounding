@@ -126,6 +126,108 @@ class OpenAIVisionClient:
         )
         return parse_icon_detection(response.output_text, image_size=image.size)
 
+    def locate_icon_with_validation(
+        self,
+        *,
+        query: str,
+        image: Image.Image,
+        max_iterations: int = 3,
+    ) -> IconDetection:
+        """Iterative bbox refinement: ask → draw → validate → correct → repeat."""
+        from notepad_grounding.shared.images import draw_box_on_image
+
+        # Step 1: Initial bbox request
+        prompt_initial = (
+            "You are helping a Windows desktop visual grounding system. "
+            f"Locate the icon GRAPHIC (the picture itself, NOT the text label) for: {query!r}. "
+            "Return JSON only with keys: target_visible, icon_bbox, confidence, rationale. "
+            "icon_bbox must be crop-local pixel coordinates [x1, y1, x2, y2]. "
+            "Draw the box TIGHT around only the icon picture. It must NOT overlap other icons. "
+            "Do not include the text label below the icon."
+        )
+
+        response = self._client.responses.create(
+            model=self._model,
+            input=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": prompt_initial},
+                        {"type": "input_image", "image_url": image_to_data_url(image), "detail": "high"},
+                    ],
+                }
+            ],
+        )
+        detection = parse_icon_detection(response.output_text, image_size=image.size)
+        prev_response_id = response.id
+
+        # Step 2+: Validation loop
+        for iteration in range(1, max_iterations + 1):
+            # Draw the bbox on the image
+            annotated = draw_box_on_image(
+                image,
+                detection.icon_bbox,
+                label=f"bbox_v{iteration}",
+                color=(255, 0, 0),
+            )
+
+            prompt_validate = (
+                "I drew your suggested bounding box in RED on the image above. "
+                "Please review it carefully.\n\n"
+                "Is the red rectangle:\n"
+                "1. Centered correctly over ONLY the icon graphic (not the text label)?\n"
+                "2. Tight — not too big, not overlapping other icons?\n\n"
+                "Return JSON with keys: confirmed (true/false), corrected_icon_bbox, confidence, rationale.\n"
+                "If confirmed=true, corrected_icon_bbox should be the same as before.\n"
+                "If confirmed=false, give the corrected [x1, y1, x2, y2] coordinates."
+            )
+
+            response = self._client.responses.create(
+                model=self._model,
+                previous_response_id=prev_response_id,
+                input=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": prompt_validate},
+                            {"type": "input_image", "image_url": image_to_data_url(annotated), "detail": "high"},
+                        ],
+                    }
+                ],
+            )
+            prev_response_id = response.id
+
+            try:
+                payload = json.loads(response.output_text)
+            except json.JSONDecodeError:
+                break
+
+            confirmed = bool(payload.get("confirmed", False))
+            raw_bbox = payload.get("corrected_icon_bbox")
+
+            if confirmed or not isinstance(raw_bbox, list | tuple) or len(raw_bbox) != 4:
+                # Either confirmed or no valid correction given
+                break
+
+            # Apply correction
+            bbox = tuple(round(float(v)) for v in raw_bbox)
+            width, height = image.size
+            clamped = (
+                max(0, min(bbox[0], width)),
+                max(0, min(bbox[1], height)),
+                max(0, min(bbox[2], width)),
+                max(0, min(bbox[3], height)),
+            )
+            if clamped[2] > clamped[0] and clamped[3] > clamped[1]:
+                detection = IconDetection(
+                    target_visible=detection.target_visible,
+                    icon_bbox=clamped,
+                    confidence=float(payload.get("confidence", detection.confidence)),
+                    rationale=str(payload.get("rationale", detection.rationale)).strip(),
+                )
+
+        return detection
+
 
 def parse_cell_choice(text: str, *, valid_cell_ids: list[str]) -> CellChoice:
     try:
