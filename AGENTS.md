@@ -4,15 +4,12 @@
 
 This repository is for a take-home interview project: **Vision-Based Desktop Automation with Dynamic Icon Grounding**.
 
-The current milestone is deliberately small: implement and debug a query-based `locate` command that finds a desktop icon candidate from a screenshot and returns a deterministic center coordinate.
-
-Do not rebuild the large placeholder architecture until the locate proof works on Windows.
+The current milestone is a query-based `locate` command that visually finds a desktop icon and returns a deterministic center coordinate.
 
 ## Tooling
 
 - Use `uv` for Python dependency management and running scripts.
-- Use `bun` instead of `npm` if JavaScript tooling is ever introduced.
-- The project should remain Python-first.
+- Use `bun` instead of `npm` if JavaScript tooling is introduced.
 - Final runtime testing must happen inside Windows, not macOS.
 
 ## Runtime Assumptions
@@ -20,6 +17,9 @@ Do not rebuild the large placeholder architecture until the locate proof works o
 - Target OS: Windows 10/11.
 - Target display: `1920x1080`, `100%` scale.
 - The user will create a desktop shortcut named `Notepad`.
+- `OPENAI_API_KEY` is required for the default LLM visual flow.
+- `.env` is supported and ignored by git. Use `.env.example` as the template.
+- Default model: `gpt-5.4`, configurable with `OPENAI_MODEL`.
 - Clone/run from a normal Windows path such as:
 
 ```text
@@ -28,69 +28,64 @@ C:\Users\<user>\Desktop\notepad-grounding
 
 Avoid Parallels shared folders such as `C:\Mac\Home\...` for final testing.
 
-## Current Implementation Direction
+## Flow Structure
+
+Keep flows isolated:
+
+```text
+src/notepad_grounding/
+  shared/
+  flows/
+    llm_visual_search/
+    grid_ocr/
+```
+
+Tests should mirror flow ownership:
+
+```text
+tests/
+  shared/
+  flows/
+    llm_visual_search/
+```
+
+## Default Implementation Direction
 
 Primary command:
 
 ```text
-uv run notepad-grounding locate --query Notepad --out-dir output/debug
+uv run notepad-grounding locate --query Notepad --out-dir output
 ```
 
-Current deterministic flow:
+Default flow: `llm-visual`.
+
+The LLM visual flow:
 
 1. Capture or load a screenshot.
-2. Split the screenshot into overlapping OCR tiles.
-3. Upscale each tile and run Windows OCR.
-4. Map tile-local OCR boxes back to original screen coordinates.
-5. Deduplicate overlapping detections and group visible text into labels, including vertically wrapped desktop icon labels.
-6. Infer candidate icon boxes above plausible labels.
-7. Score candidates with fuzzy query matching.
-8. Return the selected candidate center.
-9. Save debug images for grid, OCR labels, candidates, and selected center.
+2. Draw a labeled grid over the current image/crop.
+3. Ask the LLM which grid cell contains the target.
+4. Require the LLM to return a cell ID, not coordinates.
+5. Crop the selected cell from the original screenshot with padding.
+6. Repeat for a few rounds.
+7. Compute the final click center in deterministic code.
+8. Save every grid/crop/result artifact.
 
-Grid OCR must use overlap so icons and labels on cell boundaries are not split out of detection. The visible grid overlay must draw the same overlapping tile boxes used for OCR.
+The key rule: the LLM may choose among labeled cells; code owns all coordinate math.
 
-Keep the default VM command simple:
+## Fallback Flow
+
+`grid-ocr` is preserved as a fallback experiment:
 
 ```text
-uv run notepad-grounding locate --query Notepad --out-dir output/debug
+uv run notepad-grounding locate --query Notepad --flow grid-ocr --out-dir output
 ```
 
-Advanced OCR tuning flags may exist, but keep them hidden from normal help/docs unless the user asks how to tune a specific failure.
+Do not make OCR the primary path again unless the user explicitly asks.
 
-Do not assume Windows desktop icons are always locked to the grid; Auto Arrange and Align to Grid are user-controlled settings, and icon sizes can change.
+## Exclusions
 
-Windows OCR should receive an upscaled screenshot by default. Preserve coordinate correctness by mapping OCR boxes back to original screen coordinates before candidate inference.
+Do not use Windows desktop item APIs, shell list view APIs, or accessibility APIs to obtain icon positions. That bypasses the vision-grounding requirement.
 
-## Debugging Expectations
+Do not ask the LLM for raw pixel coordinates.
 
-Every locate run should produce visual artifacts:
-
-- grid overlay, so cell size can be inspected;
-- OCR overlay, so text detection failures are visible;
-- candidate overlay, so inferred icon boxes and scores are visible;
-- JSON result, so coordinates and settings are inspectable.
-
-Prefer simple, readable algorithms until screenshots show the failure mode clearly.
-
-## LLM / Paper Context
-
-The assignment references `arXiv:2504.07981`, **ScreenSpot-Pro** and **ScreenSeekeR**.
-
-Use the paper as inspiration for search-space reduction:
-
-- planner suggests possible regions;
-- grounder/candidate code works inside those regions;
-- final coordinates come from deterministic boxes.
-
-Do not use a pure LLM coordinate predictor as the main solution. If an LLM is added later, it should choose among numbered candidate IDs and remain disabled by default.
-
-## Near-Term Scope
-
-Implement and validate only:
-
-- query-based locate;
-- grid/OCR/candidate debug images;
-- top-left, center, bottom-right Notepad screenshot proofs.
-
-Do not implement JSONPlaceholder fetching, Notepad typing, saving, or closing until the locate proof is reliable.
+Do not implement JSONPlaceholder fetching, Notepad typing, saving, or closing until visual location is reliable.

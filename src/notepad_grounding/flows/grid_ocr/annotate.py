@@ -5,9 +5,9 @@ from typing import Iterable
 
 from PIL import Image, ImageDraw, ImageFont
 
-from notepad_grounding.grounding import Candidate
-from notepad_grounding.ocr import Box
-from notepad_grounding.ocr import OcrLine
+from notepad_grounding.flows.grid_ocr.grounding import Candidate
+from notepad_grounding.flows.grid_ocr.ocr import Box
+from notepad_grounding.flows.grid_ocr.ocr import OcrLine
 
 
 def draw_grid(image: Image.Image, grid: Iterable[object], output_path: Path) -> Path:

@@ -8,6 +8,7 @@ def test_locate_parser_accepts_query_and_image():
     assert args.command == "locate"
     assert args.query == "Notepad"
     assert str(args.image) == "screen.png"
+    assert args.flow == "llm-visual"
     assert args.ocr_mode == "grid"
     assert args.ocr_scale == 2
     assert args.ocr_tile_width == 320
@@ -22,6 +23,8 @@ def test_locate_parser_accepts_hidden_ocr_tuning_options():
             "locate",
             "--query",
             "Notepad",
+            "--flow",
+            "grid-ocr",
             "--image",
             "screen.png",
             "--ocr-scale",
@@ -37,6 +40,7 @@ def test_locate_parser_accepts_hidden_ocr_tuning_options():
 
     assert args.command == "locate"
     assert args.query == "Notepad"
+    assert args.flow == "grid-ocr"
     assert str(args.image) == "screen.png"
     assert args.ocr_scale == 2
     assert args.ocr_mode == "grid"
