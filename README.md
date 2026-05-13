@@ -73,7 +73,9 @@ The default `llm-visual` flow:
 4. The LLM returns a grid cell ID, not pixel coordinates.
 5. The code crops that selected region from the original screenshot.
 6. The process repeats with finer crops.
-7. The final click center is computed by code from the selected cell box.
+7. Once the crop is small enough, the LLM returns a crop-local `icon_bbox`.
+8. The code maps that bbox back to screen coordinates.
+9. The final click center is computed from the icon bbox center.
 
 Outputs are grouped by flow and timestamp:
 
@@ -86,6 +88,8 @@ output/llm_visual_search/<timestamp>/
   02-selected.png
   03-grid.png
   03-selected.png
+  final-crop.png
+  final-detection.png
   result.json
 ```
 

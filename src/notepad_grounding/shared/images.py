@@ -44,3 +44,23 @@ def draw_grid_cells(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     annotated.save(output_path)
     return output_path
+
+
+def draw_box(
+    image: Image.Image,
+    box: Box,
+    *,
+    output_path: Path,
+    label: str,
+    color: tuple[int, int, int] = (255, 0, 0),
+) -> Path:
+    annotated = image.convert("RGB").copy()
+    draw = ImageDraw.Draw(annotated)
+    font = ImageFont.load_default()
+    draw.rectangle(box, outline=color, width=3)
+    left, top, right, bottom = draw.textbbox((box[0] + 4, max(0, box[1] - 14)), label, font=font)
+    draw.rectangle((left - 2, top - 1, right + 2, bottom + 1), fill=(255, 255, 255))
+    draw.text((box[0] + 4, max(0, box[1] - 14)), label, fill=color, font=font)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    annotated.save(output_path)
+    return output_path

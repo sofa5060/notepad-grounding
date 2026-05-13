@@ -67,10 +67,12 @@ The LLM visual flow:
 4. Require the LLM to return a cell ID, not coordinates.
 5. Crop the selected cell from the original screenshot with padding.
 6. Repeat for a few rounds.
-7. Compute the final click center in deterministic code.
-8. Save every grid/crop/result artifact.
+7. Once the crop is small enough, ask the LLM for a crop-local `icon_bbox` around the icon graphic.
+8. Map the crop-local bbox back to screen coordinates in deterministic code.
+9. Compute the final click center from the icon bbox center.
+10. Save every grid/crop/result artifact.
 
-The key rule: the LLM may choose among labeled cells; code owns all coordinate math.
+The key rule: the LLM may choose among labeled cells and may return crop-local boxes during the final precision step; code owns all screen-coordinate math.
 
 ## Fallback Flow
 
@@ -86,6 +88,6 @@ Do not make OCR the primary path again unless the user explicitly asks.
 
 Do not use Windows desktop item APIs, shell list view APIs, or accessibility APIs to obtain icon positions. That bypasses the vision-grounding requirement.
 
-Do not ask the LLM for raw pixel coordinates.
+Do not ask the LLM for full-screen pixel coordinates.
 
 Do not implement JSONPlaceholder fetching, Notepad typing, saving, or closing until visual location is reliable.
