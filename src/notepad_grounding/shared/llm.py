@@ -17,6 +17,9 @@ class VisionClient(Protocol):
     def choose_cell(self, *, query: str, image: Image.Image, cell_ids: list[str]) -> "CellChoice":
         """Choose the grid cell most likely to contain the visual target."""
 
+    def choose_cells(self, *, query: str, image: Image.Image, cell_ids: list[str]) -> "CellsChoice":
+        """Choose all grid cells that contain any part of the visual target."""
+
     def locate_icon(self, *, query: str, image: Image.Image) -> "IconDetection":
         """Return a crop-local icon bounding box for the visual target."""
 
@@ -24,6 +27,13 @@ class VisionClient(Protocol):
 @dataclass(frozen=True)
 class CellChoice:
     cell_id: str
+    confidence: float
+    rationale: str
+
+
+@dataclass(frozen=True)
+class CellsChoice:
+    cell_ids: list[str]
     confidence: float
     rationale: str
 
@@ -71,6 +81,29 @@ class OpenAIVisionClient:
         )
         return parse_cell_choice(response.output_text, valid_cell_ids=cell_ids)
 
+    def choose_cells(self, *, query: str, image: Image.Image, cell_ids: list[str]) -> CellsChoice:
+        prompt = (
+            "You are helping a Windows desktop visual grounding system. "
+            f"Find ALL grid cells that contain any part of the desktop icon or shortcut for: {query!r}. "
+            "The icon graphic or its text label may overlap multiple adjacent cells. "
+            "Return JSON only with keys cell_ids (list of strings), confidence, rationale. "
+            f"Valid cell_id values are: {', '.join(cell_ids)}. "
+            "Return every cell_id that overlaps with the icon. Do not return pixel coordinates."
+        )
+        response = self._client.responses.create(
+            model=self._model,
+            input=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": prompt},
+                        {"type": "input_image", "image_url": image_to_data_url(image), "detail": "high"},
+                    ],
+                }
+            ],
+        )
+        return parse_cells_choice(response.output_text, valid_cell_ids=cell_ids)
+
     def locate_icon(self, *, query: str, image: Image.Image) -> IconDetection:
         prompt = (
             "You are helping a Windows desktop visual grounding system. "
@@ -108,6 +141,34 @@ def parse_cell_choice(text: str, *, valid_cell_ids: list[str]) -> CellChoice:
     confidence = max(0.0, min(1.0, confidence))
     rationale = str(payload.get("rationale", "")).strip()
     return CellChoice(cell_id=cell_id, confidence=confidence, rationale=rationale)
+
+
+def parse_cells_choice(text: str, *, valid_cell_ids: list[str]) -> CellsChoice:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"LLM did not return valid JSON: {text}") from exc
+
+    raw_ids = payload.get("cell_ids", [])
+    if not isinstance(raw_ids, list):
+        raise ValueError(f"LLM did not return a list for cell_ids: {raw_ids!r}")
+
+    cell_ids = [str(cid).strip() for cid in raw_ids]
+    invalid = [cid for cid in cell_ids if cid not in valid_cell_ids]
+    if invalid:
+        raise ValueError(f"LLM returned invalid cell_ids {invalid!r}; expected subset of {valid_cell_ids}")
+
+    seen = set()
+    deduped = []
+    for cid in cell_ids:
+        if cid not in seen:
+            seen.add(cid)
+            deduped.append(cid)
+
+    confidence = float(payload.get("confidence", 0))
+    confidence = max(0.0, min(1.0, confidence))
+    rationale = str(payload.get("rationale", "")).strip()
+    return CellsChoice(cell_ids=deduped, confidence=confidence, rationale=rationale)
 
 
 def parse_icon_detection(text: str, *, image_size: tuple[int, int]) -> IconDetection:

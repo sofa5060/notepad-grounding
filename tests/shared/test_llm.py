@@ -1,8 +1,10 @@
 import pytest
 
 from notepad_grounding.shared.llm import CellChoice
+from notepad_grounding.shared.llm import CellsChoice
 from notepad_grounding.shared.llm import IconDetection
 from notepad_grounding.shared.llm import parse_cell_choice
+from notepad_grounding.shared.llm import parse_cells_choice
 from notepad_grounding.shared.llm import parse_icon_detection
 from notepad_grounding.shared.llm import resolve_openai_model
 
@@ -34,6 +36,34 @@ def test_resolve_openai_model_prefers_explicit_argument(monkeypatch):
     monkeypatch.setenv("OPENAI_MODEL", "from-env")
 
     assert resolve_openai_model("explicit-model") == "explicit-model"
+
+
+def test_parse_cells_choice_accepts_valid_json():
+    choice = parse_cells_choice(
+        '{"cell_ids": ["F-2-2", "F-2-3"], "confidence": 0.9, "rationale": "icon spans two cells"}',
+        valid_cell_ids=["F-1-1", "F-2-2", "F-2-3"],
+    )
+
+    assert choice == CellsChoice(
+        cell_ids=["F-2-2", "F-2-3"],
+        confidence=0.9,
+        rationale="icon spans two cells",
+    )
+
+
+def test_parse_cells_choice_deduplicates_and_rejects_invalid():
+    choice = parse_cells_choice(
+        '{"cell_ids": ["F-2-2", "F-2-2", "F-2-3"], "confidence": 0.9, "rationale": "test"}',
+        valid_cell_ids=["F-1-1", "F-2-2", "F-2-3"],
+    )
+
+    assert choice.cell_ids == ["F-2-2", "F-2-3"]
+
+    with pytest.raises(ValueError):
+        parse_cells_choice(
+            '{"cell_ids": ["F-2-2", "bad"], "confidence": 0.9, "rationale": "test"}',
+            valid_cell_ids=["F-1-1", "F-2-2", "F-2-3"],
+        )
 
 
 def test_parse_icon_detection_clamps_crop_local_bbox():

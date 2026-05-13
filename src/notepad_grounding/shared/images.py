@@ -28,13 +28,18 @@ def draw_grid_cells(
     *,
     output_path: Path,
     selected_cell_id: str | None = None,
+    selected_cell_ids: list[str] | None = None,
 ) -> Path:
     annotated = image.convert("RGB").copy()
     draw = ImageDraw.Draw(annotated)
     font = ImageFont.load_default()
+    selected_set = set(selected_cell_ids or [])
+    if selected_cell_id:
+        selected_set.add(selected_cell_id)
     for cell in cells:
-        color = (255, 0, 0) if cell.id == selected_cell_id else (255, 210, 0)
-        width = 4 if cell.id == selected_cell_id else 2
+        is_selected = cell.id in selected_set
+        color = (255, 0, 0) if is_selected else (255, 210, 0)
+        width = 4 if is_selected else 2
         draw.rectangle(cell.box, outline=color, width=width)
         label_x = cell.box[0] + 4
         label_y = cell.box[1] + 4

@@ -15,7 +15,7 @@ from notepad_grounding.shared.images import crop_box
 from notepad_grounding.shared.images import draw_box
 from notepad_grounding.shared.images import draw_grid_cells
 from notepad_grounding.shared.llm import CellChoice
-from notepad_grounding.shared.llm import IconDetection
+from notepad_grounding.shared.llm import CellsChoice
 from notepad_grounding.shared.llm import VisionClient
 
 
@@ -62,6 +62,7 @@ def run_llm_visual_search(
     rounds: int = 3,
     first_grid: tuple[int, int] = (3, 4),
     later_grid: tuple[int, int] = (3, 3),
+    final_grid: tuple[int, int] = (5, 5),
     crop_padding: int = 40,
     final_crop_max_size: tuple[int, int] = (450, 350),
 ) -> VisualSearchResult:
@@ -97,7 +98,7 @@ def run_llm_visual_search(
             image=Image.open(grid_path).convert("RGB"),
             cell_ids=[cell.id for cell in local_cells],
         )
-        selected_local = _cell_by_id(local_cells, choice)
+        selected_local = _cell_by_id(local_cells, choice.cell_id)
         selected_box = _offset_box(selected_local.box, offset_x=current_box[0], offset_y=current_box[1])
 
         selected_grid_path = output_dir / f"{round_index:02d}-selected.png"
@@ -121,25 +122,51 @@ def run_llm_visual_search(
         )
         current_box = expand_box(selected_box, padding=crop_padding, bounds=bounds)
 
+    # Final fine-grained grid step: ask the LLM for all cells that overlap the icon.
     final_crop = crop_box(image, current_box)
     final_crop_path = output_dir / "final-crop.png"
     final_crop.save(final_crop_path)
-    detection = client.locate_icon(query=query, image=final_crop)
-    if not detection.target_visible:
-        raise ValueError(f"LLM reported target not visible in final crop: {detection.rationale}")
 
-    icon_box = _offset_box(detection.icon_bbox, offset_x=current_box[0], offset_y=current_box[1])
-    final_detection_path = output_dir / "final-detection.png"
-    draw_box(final_crop, detection.icon_bbox, output_path=final_detection_path, label="icon_bbox")
+    fine_rows, fine_cols = final_grid
+    prefix = "F-"
+    local_cells = build_grid_cells(
+        (0, 0, final_crop.width, final_crop.height),
+        rows=fine_rows,
+        cols=fine_cols,
+        prefix=prefix,
+    )
+    grid_path = output_dir / "final-grid.png"
+    draw_grid_cells(final_crop, local_cells, output_path=grid_path)
+
+    choice = client.choose_cells(
+        query=query,
+        image=Image.open(grid_path).convert("RGB"),
+        cell_ids=[cell.id for cell in local_cells],
+    )
+    if not choice.cell_ids:
+        raise ValueError(f"LLM reported no cells for the target in final crop: {choice.rationale}")
+
+    selected_locals = [_cell_by_id(local_cells, cid) for cid in choice.cell_ids]
+    union_local = _union_boxes([cell.box for cell in selected_locals])
+    icon_box = _offset_box(union_local, offset_x=current_box[0], offset_y=current_box[1])
+
+    selected_grid_path = output_dir / "final-selected.png"
+    draw_grid_cells(
+        final_crop,
+        local_cells,
+        output_path=selected_grid_path,
+        selected_cell_ids=choice.cell_ids,
+    )
+
     center = ((icon_box[0] + icon_box[2]) // 2, (icon_box[1] + icon_box[3]) // 2)
     final_detection = FinalDetectionStep(
         crop_box=current_box,
-        icon_bbox_local=detection.icon_bbox,
+        icon_bbox_local=union_local,
         icon_bbox_screen=icon_box,
-        confidence=detection.confidence,
-        rationale=detection.rationale,
+        confidence=choice.confidence,
+        rationale=choice.rationale,
         crop_image=str(final_crop_path),
-        detection_image=str(final_detection_path),
+        detection_image=str(selected_grid_path),
     )
     result_path = output_dir / "result.json"
     result = VisualSearchResult(
@@ -155,11 +182,11 @@ def run_llm_visual_search(
     return result
 
 
-def _cell_by_id(cells, choice: CellChoice):
+def _cell_by_id(cells, cell_id: str):
     for cell in cells:
-        if cell.id == choice.cell_id:
+        if cell.id == cell_id:
             return cell
-    raise ValueError(f"Unknown selected cell: {choice.cell_id}")
+    raise ValueError(f"Unknown selected cell: {cell_id}")
 
 
 def _offset_box(box: Box, *, offset_x: int, offset_y: int) -> Box:
@@ -169,6 +196,16 @@ def _offset_box(box: Box, *, offset_x: int, offset_y: int) -> Box:
         box[2] + offset_x,
         box[3] + offset_y,
     )
+
+
+def _union_boxes(boxes: list[Box]) -> Box:
+    if not boxes:
+        raise ValueError("Cannot compute union of empty box list")
+    x1 = min(b[0] for b in boxes)
+    y1 = min(b[1] for b in boxes)
+    x2 = max(b[2] for b in boxes)
+    y2 = max(b[3] for b in boxes)
+    return (x1, y1, x2, y2)
 
 
 def _crop_is_small_enough(box: Box, *, max_size: tuple[int, int]) -> bool:
