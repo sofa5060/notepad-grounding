@@ -1,8 +1,11 @@
 from PIL import Image
 
+from notepad_grounding.shared.click_points import build_click_grid_cells
 from notepad_grounding.shared.click_points import build_click_points
 from notepad_grounding.shared.click_points import crop_around_point
+from notepad_grounding.shared.click_points import draw_click_grid
 from notepad_grounding.shared.click_points import draw_click_points
+from notepad_grounding.shared.click_points import grid_cell_by_id
 from notepad_grounding.shared.click_points import offset_point
 from notepad_grounding.shared.click_points import point_by_id
 
@@ -46,3 +49,28 @@ def test_draw_click_points_writes_overlay(tmp_path):
     draw_click_points(image, points, output_path=output_path, selected_point_id="P05")
 
     assert output_path.exists()
+
+
+def test_build_click_grid_cells_creates_row_column_ids_and_centers():
+    cells = build_click_grid_cells((70, 70), rows=7, cols=7)
+
+    assert len(cells) == 49
+    assert cells[0].id == "R1C1"
+    assert cells[-1].id == "R7C7"
+    assert cells[0].box == (0, 0, 10, 10)
+    assert cells[24].id == "R4C4"
+    assert cells[24].center == (35, 35)
+
+
+def test_draw_click_grid_places_labels_outside_image(tmp_path):
+    image = Image.new("RGB", (70, 70), "white")
+    cells = build_click_grid_cells(image.size, rows=7, cols=7)
+    output_path = tmp_path / "grid.png"
+
+    draw_click_grid(image, cells, output_path=output_path, selected_cell_id="R4C4")
+
+    assert output_path.exists()
+    rendered = Image.open(output_path)
+    assert rendered.width > image.width
+    assert rendered.height > image.height
+    assert grid_cell_by_id(cells, "R4C4").center == (35, 35)

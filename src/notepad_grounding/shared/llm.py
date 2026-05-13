@@ -37,6 +37,17 @@ class VisionClient(Protocol):
     def choose_click_point(self, *, query: str, image: Image.Image, point_ids: list[str]) -> "ClickPointChoice":
         """Choose the labeled click point closest to the center of the visual target."""
 
+    def choose_click_grid_cell(
+        self,
+        *,
+        query: str,
+        image: Image.Image,
+        cell_ids: list[str],
+        rejected_cell_ids: list[str] | None = None,
+        previous_response_id: str | None = None,
+    ) -> "ClickGridChoice":
+        """Choose the labeled row/column grid cell closest to the visual target."""
+
     def locate_icon(self, *, query: str, image: Image.Image) -> "IconDetection":
         """Return a crop-local icon bounding box for the visual target."""
 
@@ -59,6 +70,14 @@ class CellsChoice:
 @dataclass(frozen=True)
 class ClickPointChoice:
     point_id: str
+    confidence: float
+    rationale: str
+    response_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ClickGridChoice:
+    cell_id: str
     confidence: float
     rationale: str
     response_id: str | None = None
@@ -199,6 +218,42 @@ class OpenAIVisionClient:
         choice = parse_click_point_choice(response.output_text, valid_point_ids=point_ids)
         return ClickPointChoice(
             point_id=choice.point_id,
+            confidence=choice.confidence,
+            rationale=choice.rationale,
+            response_id=response.id,
+        )
+
+    def choose_click_grid_cell(
+        self,
+        *,
+        query: str,
+        image: Image.Image,
+        cell_ids: list[str],
+        rejected_cell_ids: list[str] | None = None,
+        previous_response_id: str | None = None,
+    ) -> ClickGridChoice:
+        rejected_cell_ids = rejected_cell_ids or []
+        prompt = build_click_grid_prompt(query=query, cell_ids=cell_ids, rejected_cell_ids=rejected_cell_ids)
+        request = {
+            "model": self._model,
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": prompt},
+                        {"type": "input_image", "image_url": image_to_data_url(image), "detail": "high"},
+                    ],
+                }
+            ],
+        }
+        if previous_response_id:
+            request["previous_response_id"] = previous_response_id
+
+        response = self._client.responses.create(**request)
+        valid_cell_ids = [cell_id for cell_id in cell_ids if cell_id not in set(rejected_cell_ids)]
+        choice = parse_click_grid_choice(response.output_text, valid_cell_ids=valid_cell_ids)
+        return ClickGridChoice(
+            cell_id=choice.cell_id,
             confidence=choice.confidence,
             rationale=choice.rationale,
             response_id=response.id,
@@ -388,6 +443,22 @@ def parse_click_point_choice(text: str, *, valid_point_ids: list[str]) -> ClickP
     return ClickPointChoice(point_id=point_id, confidence=confidence, rationale=rationale)
 
 
+def parse_click_grid_choice(text: str, *, valid_cell_ids: list[str]) -> ClickGridChoice:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"LLM did not return valid JSON: {text}") from exc
+
+    cell_id = str(payload.get("cell_id", "")).strip()
+    if cell_id not in valid_cell_ids:
+        raise ValueError(f"LLM returned invalid cell_id {cell_id!r}; expected one of {valid_cell_ids}")
+
+    confidence = float(payload.get("confidence", 0))
+    confidence = max(0.0, min(1.0, confidence))
+    rationale = str(payload.get("rationale", "")).strip()
+    return ClickGridChoice(cell_id=cell_id, confidence=confidence, rationale=rationale)
+
+
 def build_click_point_prompt(*, query: str, point_ids: list[str]) -> str:
     return (
         "You are helping a Windows desktop visual grounding system choose a click target. "
@@ -396,6 +467,27 @@ def build_click_point_prompt(*, query: str, point_ids: list[str]) -> str:
         "Return JSON only with keys point_id, confidence, rationale. "
         f"Valid point_id values are: {', '.join(point_ids)}. "
         "Do not return pixel coordinates."
+    )
+
+
+def build_click_grid_prompt(*, query: str, cell_ids: list[str], rejected_cell_ids: list[str]) -> str:
+    rejected = set(rejected_cell_ids)
+    valid = [cell_id for cell_id in cell_ids if cell_id not in rejected]
+    rejected_text = ""
+    if rejected_cell_ids:
+        rejected_text = (
+            f" Do NOT choose rejected cells: {', '.join(rejected_cell_ids)}. "
+            "A reviewer inspected those cells and said they do not contain the target."
+        )
+    return (
+        "You are helping a Windows desktop visual grounding system choose a click target. "
+        "The image has a yellow row/column grid drawn over the screenshot crop. "
+        "Column numbers are shown above the image and row numbers are shown on the left, outside the image content. "
+        f"Choose the single grid cell whose center should be clicked to open the icon/app for: {query!r}. "
+        "Focus on the icon graphic itself, not the text label. "
+        "Return JSON only with keys cell_id, confidence, rationale, where cell_id uses the format R<row>C<column>, for example R3C4. "
+        f"Valid cell_id values are: {', '.join(valid)}."
+        f"{rejected_text} Do not return pixel coordinates."
     )
 
 

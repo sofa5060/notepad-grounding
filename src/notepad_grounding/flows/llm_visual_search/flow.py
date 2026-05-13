@@ -9,12 +9,12 @@ from pathlib import Path
 
 from PIL import Image
 
-from notepad_grounding.shared.click_points import ClickPoint
-from notepad_grounding.shared.click_points import build_click_points
+from notepad_grounding.shared.click_points import ClickGridCell
+from notepad_grounding.shared.click_points import build_click_grid_cells
 from notepad_grounding.shared.click_points import crop_around_point
-from notepad_grounding.shared.click_points import draw_click_points
+from notepad_grounding.shared.click_points import draw_click_grid
 from notepad_grounding.shared.click_points import offset_point
-from notepad_grounding.shared.click_points import point_by_id
+from notepad_grounding.shared.click_points import grid_cell_by_id
 from notepad_grounding.shared.geometry import Box
 from notepad_grounding.shared.geometry import build_grid_cells
 from notepad_grounding.shared.geometry import clamp_box
@@ -234,6 +234,7 @@ def run_llm_visual_search(
                 final_crop,
                 query=query,
                 client=client,
+                judge=judge,
                 output_dir=output_dir,
                 crop_box=current_box,
             )
@@ -313,60 +314,71 @@ def _run_marked_point_precision(
     *,
     query: str,
     client: VisionClient,
+    judge: GridJudgeClient | None,
     output_dir: Path,
     crop_box: Box,
 ) -> FinalClickPointStep:
-    coarse_points = build_click_points(final_crop.size, rows=9, cols=9, margin=24)
+    coarse_cells = build_click_grid_cells(final_crop.size, rows=7, cols=7)
     first_overlay_path = output_dir / "click-points-01.png"
-    draw_click_points(final_crop, coarse_points, output_path=first_overlay_path)
-    first_choice = client.choose_click_point(
+    first_choice, coarse_cell = _choose_judged_click_grid_cell(
+        final_crop,
         query=query,
-        image=Image.open(first_overlay_path).convert("RGB"),
-        point_ids=[point.id for point in coarse_points],
+        client=client,
+        judge=judge,
+        cells=coarse_cells,
+        overlay_path=first_overlay_path,
+        output_dir=output_dir,
+        artifact_prefix="click-grid-01",
+        max_attempts=3,
     )
-    coarse_point = point_by_id(coarse_points, first_choice.point_id)
     first_result_path = output_dir / "click-points-01-result.json"
     first_result_path.write_text(
         json.dumps(
             {
-                "point_id": first_choice.point_id,
+                "cell_id": first_choice.cell_id,
                 "confidence": first_choice.confidence,
                 "rationale": first_choice.rationale,
                 "response_id": first_choice.response_id,
-                "crop_point": coarse_point.center,
+                "crop_point": coarse_cell.center,
+                "cell_box": coarse_cell.box,
             },
             indent=2,
         ),
         encoding="utf-8",
     )
 
-    refinement_crop, refinement_crop_box = crop_around_point(final_crop, center=coarse_point.center, size=(96, 96))
+    refinement_crop, refinement_crop_box = crop_around_point(final_crop, center=coarse_cell.center, size=(96, 96))
     refinement_crop_path = output_dir / "click-points-02-crop.png"
     refinement_crop.save(refinement_crop_path)
 
-    fine_points = build_click_points(refinement_crop.size, rows=5, cols=5, margin=16)
+    fine_cells = build_click_grid_cells(refinement_crop.size, rows=5, cols=5)
     second_overlay_path = output_dir / "click-points-02.png"
-    draw_click_points(refinement_crop, fine_points, output_path=second_overlay_path)
-    second_choice = client.choose_click_point(
+    second_choice, fine_cell = _choose_judged_click_grid_cell(
+        refinement_crop,
         query=query,
-        image=Image.open(second_overlay_path).convert("RGB"),
-        point_ids=[point.id for point in fine_points],
+        client=client,
+        judge=judge,
+        cells=fine_cells,
+        overlay_path=second_overlay_path,
+        output_dir=output_dir,
+        artifact_prefix="click-grid-02",
+        max_attempts=3,
     )
-    fine_point = point_by_id(fine_points, second_choice.point_id)
-    final_crop_point = offset_point(fine_point.center, offset=(refinement_crop_box[0], refinement_crop_box[1]))
+    final_crop_point = offset_point(fine_cell.center, offset=(refinement_crop_box[0], refinement_crop_box[1]))
     screen_point = offset_point(final_crop_point, offset=(crop_box[0], crop_box[1]))
 
     second_result_path = output_dir / "click-points-02-result.json"
     second_result_path.write_text(
         json.dumps(
             {
-                "point_id": second_choice.point_id,
+                "cell_id": second_choice.cell_id,
                 "confidence": second_choice.confidence,
                 "rationale": second_choice.rationale,
                 "response_id": second_choice.response_id,
-                "refinement_crop_point": fine_point.center,
+                "refinement_crop_point": fine_cell.center,
                 "final_crop_point": final_crop_point,
                 "screen_point": screen_point,
+                "cell_box": fine_cell.box,
                 "refinement_crop_box": refinement_crop_box,
             },
             indent=2,
@@ -375,17 +387,23 @@ def _run_marked_point_precision(
     )
 
     final_image_path = output_dir / "click-point-final.png"
-    draw_click_points(
+    final_cell = ClickGridCell(
+        id="CLICK",
+        row=1,
+        col=1,
+        box=(final_crop_point[0] - 4, final_crop_point[1] - 4, final_crop_point[0] + 4, final_crop_point[1] + 4),
+    )
+    draw_click_grid(
         final_crop,
-        [ClickPoint(id="CLICK", center=final_crop_point)],
+        [final_cell],
         output_path=final_image_path,
-        selected_point_id="CLICK",
+        selected_cell_id="CLICK",
     )
     result_path = output_dir / "click-point-final.json"
     result = FinalClickPointStep(
         crop_box=crop_box,
-        coarse_point_id=first_choice.point_id,
-        fine_point_id=second_choice.point_id,
+        coarse_point_id=first_choice.cell_id,
+        fine_point_id=second_choice.cell_id,
         crop_point=final_crop_point,
         screen_point=screen_point,
         first_overlay_image=str(first_overlay_path),
@@ -401,6 +419,74 @@ def _run_marked_point_precision(
     )
     result_path.write_text(json.dumps(asdict(result), indent=2), encoding="utf-8")
     return result
+
+
+def _choose_judged_click_grid_cell(
+    image: Image.Image,
+    *,
+    query: str,
+    client: VisionClient,
+    judge: GridJudgeClient | None,
+    cells: list[ClickGridCell],
+    overlay_path: Path,
+    output_dir: Path,
+    artifact_prefix: str,
+    max_attempts: int,
+) -> tuple[object, ClickGridCell]:
+    rejected_cell_ids: list[str] = []
+    previous_response_id: str | None = None
+    last_rationale = ""
+
+    for attempt_index in range(1, max_attempts + 1):
+        draw_click_grid(image, cells, output_path=overlay_path)
+        choice = client.choose_click_grid_cell(
+            query=query,
+            image=Image.open(overlay_path).convert("RGB"),
+            cell_ids=[cell.id for cell in cells],
+            rejected_cell_ids=rejected_cell_ids,
+            previous_response_id=previous_response_id,
+        )
+        previous_response_id = choice.response_id
+        cell = grid_cell_by_id(cells, choice.cell_id)
+        draw_click_grid(image, cells, output_path=overlay_path, selected_cell_id=choice.cell_id)
+
+        if judge is None:
+            return choice, cell
+
+        judged_crop_box = expand_box(cell.box, padding=12, bounds=(0, 0, image.width, image.height))
+        judged_crop = image.crop(judged_crop_box)
+        judge_crop_path = output_dir / f"{artifact_prefix}-judge-crop-attempt-{attempt_index}.png"
+        judged_crop.save(judge_crop_path)
+        judge_result = judge.judge_crop(query=query, image=judged_crop)
+        judge_result_path = output_dir / f"{artifact_prefix}-judge-result-attempt-{attempt_index}.json"
+        judge_result_path.write_text(
+            json.dumps(
+                {
+                    "attempt_index": attempt_index,
+                    "selected_cell_id": choice.cell_id,
+                    "cell_box": cell.box,
+                    "judged_crop_box": judged_crop_box,
+                    "crop_image": str(judge_crop_path),
+                    "contains_target": judge_result.contains_target,
+                    "confidence": judge_result.confidence,
+                    "rationale": judge_result.rationale,
+                    "visible_evidence": judge_result.visible_evidence,
+                    "response_id": choice.response_id,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        if judge_result.contains_target:
+            return choice, cell
+
+        rejected_cell_ids.append(choice.cell_id)
+        last_rationale = judge_result.rationale
+
+    raise ValueError(
+        f"Click grid judge rejected all attempts for {artifact_prefix}; "
+        f"rejected={rejected_cell_ids}; last_rationale={last_rationale}"
+    )
 
 
 def _run_bbox_precision(

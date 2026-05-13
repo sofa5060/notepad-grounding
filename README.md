@@ -32,10 +32,12 @@ The grounding uses a **coarse-to-fine grid search**:
 6. **Crop** — once accepted, crops the selected region with padding
 7. **Repeat** — draws a finer 3×3 grid on the crop, LLM picks again
 8. **Marked click-point refinement** — once the crop is small enough:
-   - Code draws a 9×9 set of labeled red click targets over the crop
-   - LLM chooses the point closest to the center of the clickable icon graphic
-   - Code crops around that point and draws a finer 5×5 point grid
-   - LLM chooses the final point ID
+   - Code draws a 7×7 yellow grid over the crop
+   - Row numbers are drawn on the left and column numbers above the image, outside the screenshot content
+   - LLM chooses the row/column cell whose center should be clicked
+   - A judge checks the selected cell crop before accepting it
+   - Code crops around that cell and draws a finer 5×5 row/column grid
+   - LLM chooses the final cell ID
 9. **Center calculation** — code maps the selected point ID back to screen coordinates
 10. **Bbox fallback** — if marked-point selection fails, the existing bbox refinement flow still runs automatically
 
@@ -71,7 +73,7 @@ The system uses three separate validation layers:
 | Layer | When it runs | What it checks |
 |-------|--------------|----------------|
 | Grid judge | After every selected grid cell | The selected crop contains the requested icon/app visual or matching label |
-| Marked click points | At final precision | The LLM chooses labeled points instead of raw pixel coordinates |
+| Marked click grid | At final precision | The LLM chooses labeled row/column cells instead of raw pixel coordinates |
 | Bbox reviewer | Fallback after point selection failure | The red rectangle is tight around only the icon graphic |
 | Automation reviewer | After click/type/save/close actions | The desktop state matches the expected outcome |
 
@@ -188,13 +190,15 @@ Artifacts saved:
 - `01-judge-result-attempt-1.json` — structured judge verdict
 - `02-grid.png`, `02-selected.png` — round 2 grid
 - `final-crop.png` — final cropped region
-- `click-points-01.png` — coarse final click-point overlay
-- `click-points-01-result.json` — selected coarse point
-- `click-points-02-crop.png` — refinement crop around the coarse point
-- `click-points-02.png` — fine final click-point overlay
-- `click-points-02-result.json` — selected fine point and mapped coordinates
-- `click-point-final.png` — final selected click point
-- `click-point-final.json` — final point result
+- `click-points-01.png` — coarse final row/column grid with labels outside the image
+- `click-points-01-result.json` — selected coarse grid cell
+- `click-grid-01-judge-*.json/png` — judge artifacts for the selected coarse cell
+- `click-points-02-crop.png` — refinement crop around the accepted coarse cell
+- `click-points-02.png` — fine row/column grid with labels outside the image
+- `click-points-02-result.json` — selected fine grid cell and mapped coordinates
+- `click-grid-02-judge-*.json/png` — judge artifacts for the selected fine cell
+- `click-point-final.png` — final selected click location
+- `click-point-final.json` — final click result
 - `click-point-error.json` — written only if point selection fails and bbox fallback starts
 - `bbox-initial-result.json` — initial bbox model output
 - `bbox-review-01.png` — red bbox image sent back for review
@@ -238,7 +242,7 @@ src/notepad_grounding/
     automation.py                  # Mouse/keyboard helpers (pyautogui)
     api.py                         # JSONPlaceholder fetch
     capture.py                     # Screenshot capture (mss)
-    click_points.py                # Marked click-point overlays and mapping
+    click_points.py                # Marked click-grid overlays and mapping
     env.py                         # .env file loader
     geometry.py                    # Grid cell math, box operations
     images.py                      # Image drawing (grid, bbox)
@@ -258,8 +262,8 @@ src/notepad_grounding/
 ### 1. No Pixel Coordinates from LLM
 The LLM picks **labeled grid cells** during coarse search and **labeled click points** during final precision. Code owns all screen-coordinate math. This is deterministic and reliable.
 
-### 2. Marked Click-Point Precision with Bbox Fallback
-The final click target is selected from visible red point labels, then mapped to screen coordinates in code. The older bbox refinement path remains available as fallback while the point method is tested.
+### 2. Marked Click-Grid Precision with Bbox Fallback
+The final click target is selected from a labeled row/column grid whose labels sit outside the image content, then mapped to screen coordinates in code. The older bbox refinement path remains available as fallback while the grid method is tested.
 
 ### 3. Reviewer Validates Every Action
 A separate LLM call after every action catches errors early:

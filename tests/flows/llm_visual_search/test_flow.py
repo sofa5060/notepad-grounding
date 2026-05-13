@@ -5,16 +5,18 @@ from PIL import Image
 
 from notepad_grounding.flows.llm_visual_search.flow import run_llm_visual_search
 from notepad_grounding.shared.llm import CellChoice
+from notepad_grounding.shared.llm import ClickGridChoice
 from notepad_grounding.shared.llm import ClickPointChoice
 from notepad_grounding.shared.llm import IconDetection
 from notepad_grounding.shared.grid_judge import GridJudgeResult
 
 
 class FakeVisionClient:
-    def __init__(self, choices, detection, point_choices=None, fail_points=False):
+    def __init__(self, choices, detection, point_choices=None, grid_choices=None, fail_points=False):
         self.choices = list(choices)
         self.detection = detection
         self.point_choices = list(point_choices or [])
+        self.grid_choices = list(grid_choices or [])
         self.fail_points = fail_points
         self.calls = []
 
@@ -70,6 +72,26 @@ class FakeVisionClient:
             confidence=0.88,
             rationale="test point",
             response_id=f"point-response-{len(self.calls)}",
+        )
+
+    def choose_click_grid_cell(self, *, query, image, cell_ids, rejected_cell_ids=None, previous_response_id=None):
+        self.calls.append(
+            (
+                "choose_click_grid_cell",
+                query,
+                image.size,
+                cell_ids,
+                list(rejected_cell_ids or []),
+                previous_response_id,
+            )
+        )
+        if self.fail_points:
+            raise ValueError("grid selection failed")
+        return ClickGridChoice(
+            cell_id=self.grid_choices.pop(0),
+            confidence=0.88,
+            rationale="test grid cell",
+            response_id=f"grid-response-{len(self.calls)}",
         )
 
 
@@ -245,7 +267,7 @@ def test_run_llm_visual_search_uses_marked_point_final_center_and_saves_artifact
             confidence=0.92,
             rationale="bbox fallback",
         ),
-        point_choices=["P41", "P13"],
+        grid_choices=["R4C4", "R3C3"],
     )
 
     result = run_llm_visual_search(
@@ -262,7 +284,7 @@ def test_run_llm_visual_search_uses_marked_point_final_center_and_saves_artifact
     )
 
     assert result.final_method == "marked_point"
-    assert result.center == (250, 188)
+    assert result.center == (250, 187)
     assert result.final_click_point is not None
     assert result.final_detection is None
     assert (tmp_path / "points" / "click-points-01.png").exists()
@@ -272,6 +294,43 @@ def test_run_llm_visual_search_uses_marked_point_final_center_and_saves_artifact
     assert (tmp_path / "points" / "click-points-02-result.json").exists()
     assert (tmp_path / "points" / "click-point-final.json").exists()
     assert (tmp_path / "points" / "click-point-final.png").exists()
+
+
+def test_run_llm_visual_search_retries_marked_grid_after_judge_rejection(tmp_path):
+    image = Image.new("RGB", (400, 300), "white")
+    client = FakeVisionClient(
+        ["R1-2-2", "R2-1-1"],
+        IconDetection(
+            target_visible=True,
+            icon_bbox=(20, 10, 60, 50),
+            confidence=0.92,
+            rationale="bbox fallback",
+        ),
+        grid_choices=["R1C1", "R4C4", "R3C3"],
+    )
+    judge = FakeGridJudge([True, True, False, True, True])
+
+    result = run_llm_visual_search(
+        image,
+        query="Notepad",
+        client=client,
+        judge=judge,
+        output_root=tmp_path,
+        timestamp="points-judge",
+        rounds=2,
+        first_grid=(2, 2),
+        later_grid=(2, 2),
+        crop_padding=0,
+        final_crop_max_size=(50, 50),
+    )
+
+    grid_calls = [call for call in client.calls if call[0] == "choose_click_grid_cell"]
+    assert grid_calls[1][4] == ["R1C1"]
+    assert grid_calls[1][5] == "grid-response-3"
+    assert result.final_method == "marked_point"
+    assert result.final_click_point.coarse_point_id == "R4C4"
+    assert (tmp_path / "points-judge" / "click-grid-01-judge-result-attempt-1.json").exists()
+    assert (tmp_path / "points-judge" / "click-grid-01-judge-result-attempt-2.json").exists()
 
 
 def test_run_llm_visual_search_falls_back_to_bbox_when_marked_points_fail(tmp_path):

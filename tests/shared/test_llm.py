@@ -2,11 +2,13 @@ import pytest
 from PIL import Image
 
 from notepad_grounding.shared.llm import CellChoice
+from notepad_grounding.shared.llm import ClickGridChoice
 from notepad_grounding.shared.llm import ClickPointChoice
 from notepad_grounding.shared.llm import CellsChoice
 from notepad_grounding.shared.llm import IconDetection
 from notepad_grounding.shared.llm import OpenAIVisionClient
 from notepad_grounding.shared.llm import parse_click_point_choice
+from notepad_grounding.shared.llm import parse_click_grid_choice
 from notepad_grounding.shared.llm import parse_cell_choice
 from notepad_grounding.shared.llm import parse_cells_choice
 from notepad_grounding.shared.llm import parse_icon_detection
@@ -100,6 +102,23 @@ def test_parse_click_point_choice_rejects_invalid_point_id():
         parse_click_point_choice(
             '{"point_id": "P99", "confidence": 0.8, "rationale": "bad"}',
             valid_point_ids=["P01", "P02"],
+        )
+
+
+def test_parse_click_grid_choice_accepts_valid_json_and_clamps_confidence():
+    choice = parse_click_grid_choice(
+        '{"cell_id": "R4C4", "confidence": 1.5, "rationale": "center cell"}',
+        valid_cell_ids=["R1C1", "R4C4"],
+    )
+
+    assert choice == ClickGridChoice(cell_id="R4C4", confidence=1.0, rationale="center cell")
+
+
+def test_parse_click_grid_choice_rejects_invalid_cell_id():
+    with pytest.raises(ValueError):
+        parse_click_grid_choice(
+            '{"cell_id": "R9C9", "confidence": 0.8, "rationale": "bad"}',
+            valid_cell_ids=["R1C1", "R4C4"],
         )
 
 

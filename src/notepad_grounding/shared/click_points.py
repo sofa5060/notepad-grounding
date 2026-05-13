@@ -17,6 +17,18 @@ class ClickPoint:
     center: tuple[int, int]
 
 
+@dataclass(frozen=True)
+class ClickGridCell:
+    id: str
+    row: int
+    col: int
+    box: Box
+
+    @property
+    def center(self) -> tuple[int, int]:
+        return ((self.box[0] + self.box[2]) // 2, (self.box[1] + self.box[3]) // 2)
+
+
 def build_click_points(
     image_size: tuple[int, int],
     *,
@@ -50,6 +62,41 @@ def point_by_id(points: Iterable[ClickPoint], point_id: str) -> ClickPoint:
         if point.id == point_id:
             return point
     raise ValueError(f"Unknown click point: {point_id}")
+
+
+def build_click_grid_cells(
+    image_size: tuple[int, int],
+    *,
+    rows: int,
+    cols: int,
+) -> list[ClickGridCell]:
+    if rows <= 0 or cols <= 0:
+        raise ValueError("rows and cols must be positive")
+
+    width, height = image_size
+    cells: list[ClickGridCell] = []
+    for row in range(rows):
+        for col in range(cols):
+            x1 = round(width * col / cols)
+            y1 = round(height * row / rows)
+            x2 = round(width * (col + 1) / cols)
+            y2 = round(height * (row + 1) / rows)
+            cells.append(
+                ClickGridCell(
+                    id=f"R{row + 1}C{col + 1}",
+                    row=row + 1,
+                    col=col + 1,
+                    box=(x1, y1, x2, y2),
+                )
+            )
+    return cells
+
+
+def grid_cell_by_id(cells: Iterable[ClickGridCell], cell_id: str) -> ClickGridCell:
+    for cell in cells:
+        if cell.id == cell_id:
+            return cell
+    raise ValueError(f"Unknown click grid cell: {cell_id}")
 
 
 def crop_around_point(
@@ -95,6 +142,54 @@ def draw_click_points(
         left, top, right, bottom = draw.textbbox((label_x, label_y), point.id, font=font)
         draw.rectangle((left - 2, top - 1, right + 2, bottom + 1), fill=(255, 255, 255))
         draw.text((label_x, label_y), point.id, fill=color, font=font)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    annotated.save(output_path)
+    return output_path
+
+
+def draw_click_grid(
+    image: Image.Image,
+    cells: Iterable[ClickGridCell],
+    *,
+    output_path: Path,
+    selected_cell_id: str | None = None,
+    gutter: int = 28,
+) -> Path:
+    source = image.convert("RGB")
+    annotated = Image.new("RGB", (source.width + gutter, source.height + gutter), (255, 255, 255))
+    annotated.paste(source, (gutter, gutter))
+    draw = ImageDraw.Draw(annotated)
+    font = ImageFont.load_default()
+    cells_list = list(cells)
+    rows = max(cell.row for cell in cells_list)
+    cols = max(cell.col for cell in cells_list)
+
+    for col in range(1, cols + 1):
+        matching = [cell for cell in cells_list if cell.col == col]
+        x1 = min(cell.box[0] for cell in matching) + gutter
+        x2 = max(cell.box[2] for cell in matching) + gutter
+        label = str(col)
+        left, top, right, bottom = draw.textbbox((0, 0), label, font=font)
+        draw.text(((x1 + x2 - (right - left)) // 2, (gutter - (bottom - top)) // 2), label, fill=(0, 0, 0), font=font)
+
+    for row in range(1, rows + 1):
+        matching = [cell for cell in cells_list if cell.row == row]
+        y1 = min(cell.box[1] for cell in matching) + gutter
+        y2 = max(cell.box[3] for cell in matching) + gutter
+        label = str(row)
+        left, top, right, bottom = draw.textbbox((0, 0), label, font=font)
+        draw.text(((gutter - (right - left)) // 2, (y1 + y2 - (bottom - top)) // 2), label, fill=(0, 0, 0), font=font)
+
+    selected = grid_cell_by_id(cells_list, selected_cell_id) if selected_cell_id else None
+    line_color = (245, 210, 0)
+    selected_color = (255, 0, 0)
+    for cell in cells_list:
+        box = (cell.box[0] + gutter, cell.box[1] + gutter, cell.box[2] + gutter, cell.box[3] + gutter)
+        if selected and cell.id == selected.id:
+            draw.rectangle(box, outline=selected_color, width=3)
+        else:
+            draw.rectangle(box, outline=line_color, width=1)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     annotated.save(output_path)
