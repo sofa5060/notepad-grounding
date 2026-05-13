@@ -129,12 +129,22 @@ def close_active_window() -> None:
 
 
 def close_window_hard() -> None:
-    """Close the active window using Ctrl+W.
+    """Close the active window using Alt+F4, then press Escape.
 
-    Safer than Alt+F4 because on Windows desktop Ctrl+W does nothing,
-    whereas Alt+F4 opens the shutdown dialog.
+    If a wrong app is open: Alt+F4 closes it, Escape does nothing.
+    If desktop is focused: Alt+F4 opens shutdown dialog, Escape DISMISSES it.
     """
-    press_hotkey("ctrl", "w")
+    import pyautogui
+    # Send Alt+F4
+    pyautogui.keyDown("alt")
+    pyautogui.keyDown("f4")
+    pyautogui.keyUp("f4")
+    pyautogui.keyUp("alt")
+    sleep(0.5)
+    # Send Escape to dismiss shutdown dialog if it appeared
+    pyautogui.keyDown("esc")
+    pyautogui.keyUp("esc")
+    sleep(0.5)
 
 
 def click_at(x: int, y: int, *, clicks: int = 1, duration: float = 0.5) -> None:
