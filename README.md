@@ -1,136 +1,271 @@
 # notepad-grounding
 
-Windows desktop grounding proof for a take-home project.
+Vision-based Windows desktop icon grounding and automation.
 
-Current goal:
+Given a query like `"Notepad"`, the system uses an LLM to visually locate the desktop icon, click it, type content, save files, and close the app — with validation at every step.
 
-```text
-Given a desktop screenshot and a query such as "Notepad",
-visually locate the target icon and return a deterministic click center.
+## How It Works
+
+### Architecture Overview
+
+The system has three layers:
+
+1. **Visual Grounding** — finds the icon on the desktop using LLM vision
+2. **Automation** — clicks, types, saves, closes using `pyautogui`
+3. **Reviewer** — validates every action by sending screenshots back to the LLM
+
+### Step-by-Step Flow
+
+#### 1. Visual Grounding: `locate` command
+
+```powershell
+uv run notepad-grounding locate --query Notepad
 ```
 
-The default flow is now **LLM visual search**. OCR remains in the repo as a fallback experiment, but it is no longer the main path.
+The grounding uses a **coarse-to-fine grid search**:
 
-## Runtime
+1. **Screenshot** — captures the desktop (or loads an image)
+2. **Coarse grid** — draws a 3×4 grid over the screenshot, labels each cell (`R1-1-1`, `R1-1-2`, etc.)
+3. **LLM picks a cell** — sends the grid image to the LLM, which returns the cell ID containing the icon (no pixel coordinates!)
+4. **Crop** — crops the selected region with padding
+5. **Repeat** — draws a finer 3×3 grid on the crop, LLM picks again
+6. **Iterative bbox refinement** — once the crop is small enough:
+   - LLM gives initial icon bounding box coordinates
+   - Code draws the bbox in **red** on the image
+   - The drawn image is sent back to the **same conversation** (`previous_response_id`)
+   - LLM reviews: *"Is the red rectangle correctly placed over ONLY the icon?"*
+   - If wrong, LLM gives corrected coordinates
+   - Repeat up to 3× until confirmed
+7. **Center calculation** — code computes the center of the final bbox in screen coordinates
 
-Final testing must run inside Windows 10/11, ideally the Windows VM used for the interview.
+All artifacts (grids, crops, detections) are saved under `output/llm_visual_search/<timestamp>/`.
 
-Recommended setup:
+#### 2. Full Automation: `automate` command
 
-- Windows 10/11
-- Resolution: `1920 x 1080`
-- Display scale: `100%`
-- A desktop shortcut named `Notepad`
-- `OPENAI_API_KEY` set for the LLM visual flow
-- Clone into a normal Windows folder, for example:
-
-```text
-C:\Users\<user>\Desktop\notepad-grounding
+```powershell
+uv run notepad-grounding automate --query Notepad
 ```
 
-Avoid Parallels shared folders such as `C:\Mac\Home\...` for final testing.
+For each of the first 10 posts from JSONPlaceholder:
+
+1. **Ground** — run visual search to get icon center `(x, y)`
+2. **Double-click** — `pyautogui.doubleClick(x, y)` to launch Notepad
+3. **Review** — take screenshot, ask LLM: *"Is Notepad open?"*
+   - If wrong app opened (e.g., Steam): close it with `Alt+F4`, retry
+4. **Type** — type the post content: `Title: {title}\n\n{body}`
+5. **Review** — *"Does the text look correct?"*
+6. **Save** — `Ctrl+Shift+S` → type full path `C:\Users\...\Desktop\tjm-project\post_{id}.txt` → Enter
+7. **Review** — *"Did save succeed? Any pop-ups?"*
+   - If "Replace file?" dialog: click Yes/Replace
+8. **Close** — `Ctrl+Shift+W` to close Notepad
+9. **Review** — *"Is Notepad closed? Desktop visible?"*
+10. **Repeat** — fresh screenshot → ground again → next post
+
+If any step fails, the system retries up to 3 times with a 1-second delay.
+
+### The Reviewer Pattern
+
+After **every action**, a screenshot is sent to the LLM reviewer:
+
+```
+Action: "Double-clicked Notepad icon at (850, 420)"
+Expected: "Notepad window is open and active"
+→ LLM returns: {status, action_needed, rationale}
+```
+
+| Status | Meaning | Recovery |
+|--------|---------|----------|
+| `success` | Everything is correct | Continue |
+| `wrong_app` | Wrong window opened | Close with `Alt+F4`, retry from grounding |
+| `pop_up` | Unexpected dialog | Handle it (click Replace, Yes, etc.) |
+| `error` | Something else is wrong | Wait longer or retry |
+| `retry` | Not sure yet | Wait and re-check |
+
+This makes the system robust against:
+- Wrong icon clicks
+- Replace file dialogs
+- Windows that don't open
+- Windows that don't close
+
+### Structured LLM Outputs
+
+Instead of parsing raw JSON text, the system uses the **`instructor`** library with Pydantic models:
+
+```python
+from pydantic import BaseModel
+
+class ReviewResultModel(BaseModel):
+    status: str           # success, wrong_app, pop_up, error, retry
+    action_needed: str    # what to do next
+    rationale: str        # explanation
+
+# Guaranteed structured output — no parsing errors
+result = client.chat.completions.create(
+    model="gpt-4o",
+    response_model=ReviewResultModel,
+    messages=[...],
+)
+```
 
 ## Setup
 
+### Requirements
+
+- Windows 10/11 (for live capture and automation)
+- Python 3.11+
+- `uv` for dependency management
+- `OPENAI_API_KEY` in `.env`
+
+### Install
+
 ```powershell
+git clone <repo-url>
+cd notepad-grounding
 uv sync
 ```
 
-Create a local `.env` file from the example:
+### Configuration
 
 ```powershell
 copy .env.example .env
 ```
 
-Then edit `.env`:
+Edit `.env`:
 
 ```text
 OPENAI_API_KEY=sk-your-real-key
-OPENAI_MODEL=gpt-5.4
+OPENAI_MODEL=gpt-4o
 ```
 
-The default LLM is `gpt-5.4`. You can change `OPENAI_MODEL` later if we decide to test a stronger or cheaper vision model.
+Default model is `gpt-5.4`. Change `OPENAI_MODEL` to use a different one.
 
-## Default Locate Flow
+### Before Running
 
-Run inside Windows with the desktop visible:
+1. Create a desktop shortcut named **"Notepad"**
+2. Make sure the desktop is visible (no windows covering it)
+3. The target save directory `Desktop/tjm-project` is created and cleared automatically
+
+## CLI Commands
+
+### `locate` — Find an icon
 
 ```powershell
-uv run notepad-grounding locate --query Notepad --out-dir output
+# Live capture + ground
+uv run notepad-grounding locate --query Notepad
+
+# Replay a saved screenshot
+uv run notepad-grounding locate --query Notepad --image screenshots/desktop.png
 ```
 
-Replay an existing screenshot:
+**Output:**
+```
+flow=llm-visual
+output_dir=output/llm_visual_search/20250115-143022
+result=output/llm_visual_search/20250115-143022/result.json
+found=true
+center=850,420
+```
+
+Artifacts saved:
+- `00-source.png` — original screenshot
+- `01-grid.png`, `01-selected.png` — round 1 grid
+- `02-grid.png`, `02-selected.png` — round 2 grid
+- `final-crop.png` — final cropped region
+- `final-detection.png` — detection with red bbox
+- `result.json` — full result with center coordinates
+
+### `automate` — Full workflow
 
 ```powershell
-uv run notepad-grounding locate --query Notepad --image output/screen.png --out-dir output
+# Default: 10 posts, 3 retries
+uv run notepad-grounding automate --query Notepad
 ```
 
-The default `llm-visual` flow:
-
-1. Captures or loads the screenshot.
-2. Draws a coarse grid over the image.
-3. Sends the grid image to the LLM.
-4. The LLM returns a grid cell ID, not pixel coordinates.
-5. The code crops that selected region from the original screenshot.
-6. The process repeats with finer crops.
-7. Once the crop is small enough, the LLM returns a crop-local `icon_bbox`.
-8. The code maps that bbox back to screen coordinates.
-9. The final click center is computed from the icon bbox center.
-
-Outputs are grouped by flow and timestamp:
-
-```text
-output/llm_visual_search/<timestamp>/
-  00-source.png
-  01-grid.png
-  01-selected.png
-  02-grid.png
-  02-selected.png
-  03-grid.png
-  03-selected.png
-  final-crop.png
-  final-detection.png
-  result.json
+**Output:**
+```
+INFO: Starting automation for query='Notepad'
+INFO: Fetching 10 posts from JSONPlaceholder...
+INFO: [post_1.txt] Attempt 1/3: grounding icon...
+INFO: [post_1.txt] Icon found at (850, 420)
+INFO: [post_1.txt] Double-clicked at (850, 420)
+INFO: [REVIEW] Double-clicked... | Expected: Notepad window is open
+INFO: [REVIEW] status=success action_needed=proceed rationale=Notepad is active
+INFO: [post_1.txt] Reviewer confirmed: Notepad is open
+...
+flow=automate
+output_dir=output/automation/20250115-143022
+result=output/automation/20250115-143022/result.json
+total_posts=10
+succeeded=10
+failed=0
 ```
 
-## Fallback OCR Flow
-
-The previous OCR experiment is preserved:
-
-```powershell
-uv run notepad-grounding locate --query Notepad --flow grid-ocr --out-dir output
-```
-
-Use it only for comparison or fallback. It runs OCR over overlapping tiles and saves grid/OCR/candidate debug images under `output/grid_ocr/`.
-
-## Project Layout
+## Project Structure
 
 ```text
 src/notepad_grounding/
-  main.py
+  main.py                          # CLI entry point
   shared/
-    capture.py
-    geometry.py
-    images.py
-    llm.py
+    automation.py                  # Mouse/keyboard helpers (pyautogui)
+    api.py                         # JSONPlaceholder fetch
+    capture.py                     # Screenshot capture (mss)
+    env.py                         # .env file loader
+    geometry.py                    # Grid cell math, box operations
+    images.py                      # Image drawing (grid, bbox)
+    llm.py                         # OpenAI client + structured outputs
+    reviewer.py                    # LLM state reviewer
+    schemas.py                     # Pydantic models for LLM outputs
   flows/
     llm_visual_search/
-      flow.py
-    grid_ocr/
-      annotate.py
-      grounding.py
-      ocr.py
+      flow.py                      # Coarse-to-fine grounding + bbox refinement
+    automation/
+      runner.py                    # Full Notepad automation loop
+    grid_ocr/                      # Fallback OCR flow (deprecated)
 ```
 
-## Development Checks
+## Key Design Decisions
+
+### 1. No Pixel Coordinates from LLM (Except Bbox Refinement)
+The LLM only picks **labeled grid cells** during coarse search. Code owns all screen-coordinate math. This is deterministic and reliable.
+
+### 2. Iterative Bbox Refinement with Visual Feedback
+Instead of a one-shot bbox request, the system shows the LLM its own bbox and asks for corrections. This leverages the LLM's visual reasoning in a feedback loop.
+
+### 3. Reviewer Validates Every Action
+A separate LLM call after every action catches errors early:
+- Wrong app opened → close and retry
+- Pop-up appeared → handle it
+- Text not typed → retry
+
+### 4. Structured Outputs with Pydantic
+Using `instructor` library guarantees the LLM returns valid JSON matching a Pydantic schema. No manual parsing, no JSON errors.
+
+### 5. macOS Parallels Compatibility
+When running on macOS controlling a Windows VM:
+- `Ctrl` is mapped to `Command` for keyboard shortcuts
+- `Alt+F4` closes the active window
+- `Ctrl+Shift+S` opens Save As dialog
+- `Ctrl+Shift+W` closes Notepad tab
+
+## Development
 
 ```bash
+# Run tests
 uv run pytest -v
+
+# Check CLI help
+uv run notepad-grounding --help
 uv run notepad-grounding locate --help
+uv run notepad-grounding automate --help
 ```
 
-## Next Milestones
+## Notes
 
-1. Validate `llm-visual` on Windows with the icon in top-left, center, and bottom-right positions.
-2. Inspect saved grid/crop images and tune the number of rounds or crop padding if needed.
-3. Add the Notepad launch/save automation only after visual location is reliable.
+- **Resolution:** Designed for `1920×1080` at `100%` scale. Other resolutions may need tuning.
+- **Icon names:** The query should match the visible text label (e.g., `"Notepad"`, not `"notepad"`)
+- **Cost:** Each automation run makes ~40-60 LLM calls (grounding rounds + reviews). Monitor your OpenAI usage.
+- **Speed:** Each post takes ~15-30 seconds depending on LLM response time.
+
+## License
+
+Take-home project.
