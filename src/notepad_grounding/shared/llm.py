@@ -124,13 +124,64 @@ class OpenAIVisionClient:
                 }
             ],
         )
-        choice = parse_cell_choice(response.output_text, valid_cell_ids=cell_ids)
+
+        # Try parsing; if the LLM returns an invalid cell_id, correct it inline.
+        choice, prev_response_id = self._try_parse_cell_choice(
+            response, cell_ids, image
+        )
         return CellChoice(
             cell_id=choice.cell_id,
             confidence=choice.confidence,
             rationale=choice.rationale,
-            response_id=response.id,
+            response_id=prev_response_id,
         )
+
+    def _try_parse_cell_choice(
+        self,
+        response,
+        cell_ids: list[str],
+        image: Image.Image,
+        max_retries: int = 2,
+    ) -> tuple[CellChoice, str]:
+        """Parse cell choice; if invalid, tell the LLM and retry using previous_response_id."""
+        prev_response_id = response.id
+        for attempt in range(max_retries + 1):
+            try:
+                choice = parse_cell_choice(response.output_text, valid_cell_ids=cell_ids)
+                return choice, prev_response_id
+            except ValueError as exc:
+                invalid_cell_id = self._extract_invalid_cell_id(str(exc))
+                correction_prompt = (
+                    f"Your previous response returned an invalid cell_id '{invalid_cell_id}'. "
+                    f"Valid cell_id values are: {', '.join(cell_ids)}. "
+                    "Please return a JSON object with a valid cell_id."
+                )
+                response = self._client.responses.create(
+                    model=self._model,
+                    previous_response_id=prev_response_id,
+                    input=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "input_text", "text": correction_prompt},
+                                {"type": "input_image", "image_url": image_to_data_url(image), "detail": "high"},
+                            ],
+                        }
+                    ],
+                )
+                prev_response_id = response.id
+        # If we exhausted retries, raise the last error
+        raise ValueError(f"LLM failed to return a valid cell_id after {max_retries} retries")
+
+    @staticmethod
+    def _extract_invalid_cell_id(error_msg: str) -> str:
+        """Extract the invalid cell_id from the ValueError message."""
+        # Message format: "LLM returned invalid cell_id 'R2-2-2'; ..."
+        start = error_msg.find("'") + 1
+        end = error_msg.find("'", start)
+        if start > 0 and end > start:
+            return error_msg[start:end]
+        return "unknown"
 
     def revise_cell_choice(
         self,
