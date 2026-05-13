@@ -197,7 +197,8 @@ Artifacts saved:
 - `click-points-02.png` — fine row/column grid with labels outside the image
 - `click-points-02-result.json` — selected fine grid cell and mapped coordinates
 - `click-grid-02-judge-*.json/png` — judge artifacts for the selected fine cell
-- `click-point-final.png` — final selected click location
+- `click-point-final.png` — final selected click location on the final crop
+- `click-point-full.png` — final selected click location on the full screenshot
 - `click-point-final.json` — final click result
 - `click-point-error.json` — written only if point selection fails and bbox fallback starts
 - `bbox-initial-result.json` — initial bbox model output

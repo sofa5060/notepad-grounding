@@ -286,6 +286,7 @@ def test_run_llm_visual_search_uses_marked_point_final_center_and_saves_artifact
     assert result.final_method == "marked_point"
     assert result.center == (250, 187)
     assert result.final_click_point is not None
+    assert result.final_click_point.full_image.endswith("click-point-full.png")
     assert result.final_detection is None
     assert (tmp_path / "points" / "click-points-01.png").exists()
     assert (tmp_path / "points" / "click-points-01-result.json").exists()
@@ -294,6 +295,7 @@ def test_run_llm_visual_search_uses_marked_point_final_center_and_saves_artifact
     assert (tmp_path / "points" / "click-points-02-result.json").exists()
     assert (tmp_path / "points" / "click-point-final.json").exists()
     assert (tmp_path / "points" / "click-point-final.png").exists()
+    assert (tmp_path / "points" / "click-point-full.png").exists()
 
 
 def test_run_llm_visual_search_retries_marked_grid_after_judge_rejection(tmp_path):

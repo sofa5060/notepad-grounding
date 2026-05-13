@@ -182,8 +182,8 @@ def draw_click_grid(
         draw.text(((gutter - (right - left)) // 2, (y1 + y2 - (bottom - top)) // 2), label, fill=(0, 0, 0), font=font)
 
     selected = grid_cell_by_id(cells_list, selected_cell_id) if selected_cell_id else None
-    line_color = (245, 210, 0)
-    selected_color = (255, 0, 0)
+    line_color = (255, 0, 0)
+    selected_color = (255, 210, 0)
     for cell in cells_list:
         box = (cell.box[0] + gutter, cell.box[1] + gutter, cell.box[2] + gutter, cell.box[3] + gutter)
         if selected and cell.id == selected.id:

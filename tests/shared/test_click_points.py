@@ -74,3 +74,15 @@ def test_draw_click_grid_places_labels_outside_image(tmp_path):
     assert rendered.width > image.width
     assert rendered.height > image.height
     assert grid_cell_by_id(cells, "R4C4").center == (35, 35)
+
+
+def test_draw_click_grid_uses_red_lines_and_yellow_selected_cell(tmp_path):
+    image = Image.new("RGB", (70, 70), "white")
+    cells = build_click_grid_cells(image.size, rows=7, cols=7)
+    output_path = tmp_path / "grid.png"
+
+    draw_click_grid(image, cells, output_path=output_path, selected_cell_id="R4C4")
+
+    rendered = Image.open(output_path)
+    assert rendered.getpixel((28, 28)) == (255, 0, 0)
+    assert rendered.getpixel((58, 58)) == (255, 210, 0)

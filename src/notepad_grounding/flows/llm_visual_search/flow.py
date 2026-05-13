@@ -76,6 +76,7 @@ class FinalClickPointStep:
     second_overlay_image: str
     second_result_json: str
     final_image: str
+    full_image: str
     result_json: str
     confidence: float
     rationale: str
@@ -237,6 +238,8 @@ def run_llm_visual_search(
                 judge=judge,
                 output_dir=output_dir,
                 crop_box=current_box,
+                screen_image=image,
+                bounds=bounds,
             )
             center = final_click_point.screen_point
             final_box = _point_box(center, bounds=bounds)
@@ -317,6 +320,8 @@ def _run_marked_point_precision(
     judge: GridJudgeClient | None,
     output_dir: Path,
     crop_box: Box,
+    screen_image: Image.Image,
+    bounds: Box,
 ) -> FinalClickPointStep:
     coarse_cells = build_click_grid_cells(final_crop.size, rows=7, cols=7)
     first_overlay_path = output_dir / "click-points-01.png"
@@ -399,6 +404,14 @@ def _run_marked_point_precision(
         output_path=final_image_path,
         selected_cell_id="CLICK",
     )
+    full_image_path = output_dir / "click-point-full.png"
+    draw_box(
+        screen_image,
+        _point_box(screen_point, bounds=bounds),
+        output_path=full_image_path,
+        label="click_point",
+        color=(255, 210, 0),
+    )
     result_path = output_dir / "click-point-final.json"
     result = FinalClickPointStep(
         crop_box=crop_box,
@@ -413,6 +426,7 @@ def _run_marked_point_precision(
         second_overlay_image=str(second_overlay_path),
         second_result_json=str(second_result_path),
         final_image=str(final_image_path),
+        full_image=str(full_image_path),
         result_json=str(result_path),
         confidence=min(first_choice.confidence, second_choice.confidence),
         rationale=f"{first_choice.rationale} | {second_choice.rationale}",
