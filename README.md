@@ -188,6 +188,10 @@ Artifacts saved:
 - `01-judge-result-attempt-1.json` — structured judge verdict
 - `02-grid.png`, `02-selected.png` — round 2 grid
 - `final-crop.png` — final cropped region
+- `bbox-initial-result.json` — initial bbox model output
+- `bbox-review-01.png` — red bbox image sent back for review
+- `bbox-review-01-result.json` — bbox reviewer response for that iteration
+- `bbox-final-result.json` — final bbox used for center/click calculation
 - `final-detection.png` — detection with red bbox
 - `result.json` — full result with center coordinates
 

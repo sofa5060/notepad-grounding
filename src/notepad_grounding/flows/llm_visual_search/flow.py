@@ -194,7 +194,7 @@ def run_llm_visual_search(
     final_crop_path = output_dir / "final-crop.png"
     final_crop.save(final_crop_path)
 
-    detection = client.locate_icon_with_validation(query=query, image=final_crop)
+    detection = client.locate_icon_with_validation(query=query, image=final_crop, debug_dir=output_dir)
     if not detection.target_visible:
         raise ValueError(f"LLM reported target not visible in final crop: {detection.rationale}")
 

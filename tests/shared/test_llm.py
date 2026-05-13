@@ -1,8 +1,10 @@
 import pytest
+from PIL import Image
 
 from notepad_grounding.shared.llm import CellChoice
 from notepad_grounding.shared.llm import CellsChoice
 from notepad_grounding.shared.llm import IconDetection
+from notepad_grounding.shared.llm import OpenAIVisionClient
 from notepad_grounding.shared.llm import parse_cell_choice
 from notepad_grounding.shared.llm import parse_cells_choice
 from notepad_grounding.shared.llm import parse_icon_detection
@@ -90,3 +92,64 @@ def test_bbox_prompts_explain_box_center_is_click_target():
     assert "center" in initial
     assert "click target" in validation
     assert "center point" in validation
+
+
+class FakeOpenAIResponse:
+    def __init__(self, *, response_id: str, output_text: str):
+        self.id = response_id
+        self.output_text = output_text
+
+
+class FakeResponses:
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return self._responses.pop(0)
+
+
+class FakeOpenAIClient:
+    def __init__(self, responses):
+        self.responses = FakeResponses(responses)
+
+
+def test_locate_icon_with_validation_saves_bbox_debug_outputs(tmp_path):
+    fake_client = FakeOpenAIClient(
+        [
+            FakeOpenAIResponse(
+                response_id="initial",
+                output_text='{"target_visible": true, "icon_bbox": [0, 0, 10, 10], "confidence": 0.6, "rationale": "initial"}',
+            ),
+            FakeOpenAIResponse(
+                response_id="review-1",
+                output_text='{"confirmed": false, "corrected_icon_bbox": [5, 6, 25, 26], "confidence": 0.8, "rationale": "shifted"}',
+            ),
+            FakeOpenAIResponse(
+                response_id="review-2",
+                output_text='{"confirmed": true, "corrected_icon_bbox": [5, 6, 25, 26], "confidence": 0.9, "rationale": "aligned"}',
+            ),
+        ]
+    )
+    client = OpenAIVisionClient.__new__(OpenAIVisionClient)
+    client._client = fake_client
+    client._model = "test-model"
+
+    detection = client.locate_icon_with_validation(
+        query="Notepad",
+        image=Image.new("RGB", (100, 100), "white"),
+        max_iterations=2,
+        debug_dir=tmp_path,
+    )
+
+    assert detection.icon_bbox == (5, 6, 25, 26)
+    assert (tmp_path / "bbox-initial-result.json").exists()
+    assert (tmp_path / "bbox-review-01.png").exists()
+    assert (tmp_path / "bbox-review-01-result.json").exists()
+    assert (tmp_path / "bbox-review-02.png").exists()
+    assert (tmp_path / "bbox-review-02-result.json").exists()
+    assert (tmp_path / "bbox-final-result.json").exists()
+    assert '"response_id": "initial"' in (tmp_path / "bbox-initial-result.json").read_text()
+    assert '"raw_output"' in (tmp_path / "bbox-review-01-result.json").read_text()
+    assert '"final_detection"' in (tmp_path / "bbox-final-result.json").read_text()

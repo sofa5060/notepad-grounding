@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import asdict
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 from PIL import Image
@@ -197,6 +199,7 @@ class OpenAIVisionClient:
         query: str,
         image: Image.Image,
         max_iterations: int = 3,
+        debug_dir: Path | None = None,
     ) -> IconDetection:
         """Iterative bbox refinement: ask → draw → validate → correct → repeat."""
         from notepad_grounding.shared.images import draw_box_on_image
@@ -217,6 +220,16 @@ class OpenAIVisionClient:
             ],
         )
         detection = parse_icon_detection(response.output_text, image_size=image.size)
+        _write_bbox_debug_json(
+            debug_dir,
+            "bbox-initial-result.json",
+            {
+                "stage": "initial_detection",
+                "response_id": response.id,
+                "raw_output": response.output_text,
+                "parsed_detection": asdict(detection),
+            },
+        )
         prev_response_id = response.id
 
         # Step 2+: Validation loop
@@ -228,12 +241,16 @@ class OpenAIVisionClient:
                 label=f"bbox_v{iteration}",
                 color=(255, 0, 0),
             )
+            if debug_dir is not None:
+                debug_dir.mkdir(parents=True, exist_ok=True)
+                annotated.save(debug_dir / f"bbox-review-{iteration:02d}.png")
 
             prompt_validate = build_bbox_validation_prompt()
 
+            request_previous_response_id = prev_response_id
             response = self._client.responses.create(
                 model=self._model,
-                previous_response_id=prev_response_id,
+                previous_response_id=request_previous_response_id,
                 input=[
                     {
                         "role": "user",
@@ -246,10 +263,23 @@ class OpenAIVisionClient:
             )
             prev_response_id = response.id
 
+            debug_payload = {
+                "stage": "bbox_review",
+                "iteration": iteration,
+                "response_id": response.id,
+                "previous_response_id": request_previous_response_id,
+                "input_bbox": detection.icon_bbox,
+                "raw_output": response.output_text,
+            }
             try:
                 payload = json.loads(response.output_text)
             except json.JSONDecodeError:
+                debug_payload["parse_error"] = "invalid_json"
+                _write_bbox_debug_json(debug_dir, f"bbox-review-{iteration:02d}-result.json", debug_payload)
                 break
+
+            debug_payload["parsed_output"] = payload
+            _write_bbox_debug_json(debug_dir, f"bbox-review-{iteration:02d}-result.json", debug_payload)
 
             confirmed = bool(payload.get("confirmed", False))
             raw_bbox = payload.get("corrected_icon_bbox")
@@ -275,7 +305,22 @@ class OpenAIVisionClient:
                     rationale=str(payload.get("rationale", detection.rationale)).strip(),
                 )
 
+        _write_bbox_debug_json(
+            debug_dir,
+            "bbox-final-result.json",
+            {
+                "stage": "final_detection",
+                "parsed_detection": asdict(detection),
+            },
+        )
         return detection
+
+
+def _write_bbox_debug_json(debug_dir: Path | None, filename: str, payload: dict) -> None:
+    if debug_dir is None:
+        return
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    (debug_dir / filename).write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def parse_cell_choice(text: str, *, valid_cell_ids: list[str]) -> CellChoice:

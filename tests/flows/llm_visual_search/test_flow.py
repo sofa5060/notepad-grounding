@@ -54,8 +54,8 @@ class FakeVisionClient:
             response_id=f"response-{index}",
         )
 
-    def locate_icon_with_validation(self, *, query, image, max_iterations=3):
-        self.calls.append(("locate_icon_with_validation", query, image.size, max_iterations))
+    def locate_icon_with_validation(self, *, query, image, max_iterations=3, debug_dir=None):
+        self.calls.append(("locate_icon_with_validation", query, image.size, max_iterations, debug_dir))
         return self.detection
 
 
