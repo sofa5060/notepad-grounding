@@ -146,7 +146,7 @@ def run_automation(
 
                 # 6. Wait for save then close Notepad
                 sleep(1.0)
-                press_hotkey("alt", "f4")
+                press_hotkey("ctrl", "shift", "w")
                 logger.info("[%s] Closed Notepad", filename)
 
                 status = "success"
