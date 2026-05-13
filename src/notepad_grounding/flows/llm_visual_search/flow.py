@@ -135,6 +135,9 @@ def run_llm_visual_search(
     final_detection_path = output_dir / "final-detection.png"
     draw_box(final_crop, detection.icon_bbox, output_path=final_detection_path, label="icon_bbox")
 
+    full_detection_path = output_dir / "full-detection.png"
+    draw_box(image, icon_box, output_path=full_detection_path, label="icon_bbox")
+
     center = ((icon_box[0] + icon_box[2]) // 2, (icon_box[1] + icon_box[3]) // 2)
     final_detection = FinalDetectionStep(
         crop_box=current_box,
