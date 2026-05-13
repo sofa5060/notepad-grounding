@@ -176,12 +176,19 @@ def run_automation(
                 if review.status == "wrong_app":
                     logger.warning("[%s] Reviewer detected wrong app: %s", filename, review.rationale)
                     active = get_active_window_title()
-                    if active:
+                    active_lower = (active or "").lower().strip()
+                    # Only close if a real app window is open (not desktop, start menu, etc.)
+                    is_real_app = (
+                        active_lower
+                        and active_lower not in ("desktop", "program manager", "start")
+                        and "desktop" not in active_lower
+                    )
+                    if is_real_app:
                         logger.info("[%s] Closing wrong app '%s' with Alt+F4...", filename, active)
                         close_window_hard()
                         sleep(3.0)
                     else:
-                        logger.info("[%s] No active window — clicked empty space, nothing to close", filename)
+                        logger.info("[%s] No real app open (active='%s') — nothing to close", filename, active)
                     raise RuntimeError(f"Wrong app opened: {review.rationale}")
                 elif review.status in ("error", "retry"):
                     _handle_recovery(review.action_needed)
