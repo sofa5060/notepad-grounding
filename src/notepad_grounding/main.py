@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import sys
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -23,12 +25,23 @@ from notepad_grounding.shared.capture import load_image
 from notepad_grounding.shared.llm import OpenAIVisionClient
 
 
+def _setup_logging() -> None:
+    """Configure logging so INFO-level messages go to stderr."""
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.addHandler(handler)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "locate":
         return run_locate(args)
     if args.command == "automate":
+        _setup_logging()
         return run_automate(args)
     parser.print_help()
     return 0
