@@ -4,6 +4,7 @@ from notepad_grounding.shared.click_points import build_click_grid_cells
 from notepad_grounding.shared.click_points import build_click_points
 from notepad_grounding.shared.click_points import crop_around_point
 from notepad_grounding.shared.click_points import draw_click_grid
+from notepad_grounding.shared.click_points import draw_full_click_marker
 from notepad_grounding.shared.click_points import draw_click_points
 from notepad_grounding.shared.click_points import grid_cell_by_id
 from notepad_grounding.shared.click_points import offset_point
@@ -86,3 +87,20 @@ def test_draw_click_grid_uses_red_lines_and_yellow_selected_cell(tmp_path):
     rendered = Image.open(output_path)
     assert rendered.getpixel((28, 28)) == (255, 0, 0)
     assert rendered.getpixel((58, 58)) == (255, 210, 0)
+
+
+def test_draw_full_click_marker_uses_red_marker_and_large_label(tmp_path):
+    image = Image.new("RGB", (120, 120), "white")
+    output_path = tmp_path / "full.png"
+
+    draw_full_click_marker(image, point=(60, 60), output_path=output_path, label="click_point")
+
+    rendered = Image.open(output_path)
+    assert rendered.getpixel((60, 60)) == (255, 0, 0)
+    red_label_pixels = 0
+    for y in range(0, 50):
+        for x in range(rendered.width):
+            r, g, b = rendered.getpixel((x, y))
+            if r > 200 and g < 80 and b < 80:
+                red_label_pixels += 1
+    assert red_label_pixels > 20

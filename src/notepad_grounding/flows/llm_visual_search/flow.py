@@ -13,6 +13,7 @@ from notepad_grounding.shared.click_points import ClickGridCell
 from notepad_grounding.shared.click_points import build_click_grid_cells
 from notepad_grounding.shared.click_points import crop_around_point
 from notepad_grounding.shared.click_points import draw_click_grid
+from notepad_grounding.shared.click_points import draw_full_click_marker
 from notepad_grounding.shared.click_points import offset_point
 from notepad_grounding.shared.click_points import grid_cell_by_id
 from notepad_grounding.shared.geometry import Box
@@ -405,12 +406,11 @@ def _run_marked_point_precision(
         selected_cell_id="CLICK",
     )
     full_image_path = output_dir / "click-point-full.png"
-    draw_box(
+    draw_full_click_marker(
         screen_image,
-        _point_box(screen_point, bounds=bounds),
+        point=screen_point,
         output_path=full_image_path,
         label="click_point",
-        color=(255, 210, 0),
     )
     result_path = output_dir / "click-point-final.json"
     result = FinalClickPointStep(

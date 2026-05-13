@@ -194,3 +194,40 @@ def draw_click_grid(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     annotated.save(output_path)
     return output_path
+
+
+def draw_full_click_marker(
+    image: Image.Image,
+    *,
+    point: tuple[int, int],
+    output_path: Path,
+    label: str = "click_point",
+) -> Path:
+    annotated = image.convert("RGB").copy()
+    draw = ImageDraw.Draw(annotated)
+    font = ImageFont.load_default()
+    x, y = point
+    color = (255, 0, 0)
+
+    draw.line((x - 14, y, x + 14, y), fill=color, width=5)
+    draw.line((x, y - 14, x, y + 14), fill=color, width=5)
+    draw.ellipse((x - 7, y - 7, x + 7, y + 7), outline=color, width=4)
+
+    scale = 2
+    left, top, right, bottom = draw.textbbox((0, 0), label, font=font)
+    text_width = right - left
+    text_height = bottom - top
+    label_image = Image.new("RGBA", (text_width + 6, text_height + 4), (255, 255, 255, 230))
+    label_draw = ImageDraw.Draw(label_image)
+    label_draw.text((3, 2), label, fill=color, font=font)
+    label_image = label_image.resize((label_image.width * scale, label_image.height * scale))
+    label_x = min(max(0, x + 18), max(0, annotated.width - label_image.width))
+    if y - label_image.height - 18 >= 0:
+        label_y = y - label_image.height - 18
+    else:
+        label_y = min(y + 18, max(0, annotated.height - label_image.height))
+    annotated.paste(label_image.convert("RGB"), (label_x, label_y))
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    annotated.save(output_path)
+    return output_path
