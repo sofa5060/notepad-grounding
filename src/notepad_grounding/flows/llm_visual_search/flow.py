@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import asdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -50,6 +51,7 @@ class VisualSearchResult:
     final_detection: FinalDetectionStep
     output_dir: str
     result_json: str
+    elapsed_seconds: float
 
 
 def run_llm_visual_search(
@@ -66,6 +68,7 @@ def run_llm_visual_search(
     crop_padding: int = 40,
     final_crop_max_size: tuple[int, int] = (450, 350),
 ) -> VisualSearchResult:
+    start_time = time.perf_counter()
     run_id = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
     output_dir = output_root / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -148,6 +151,9 @@ def run_llm_visual_search(
         crop_image=str(final_crop_path),
         detection_image=str(final_detection_path),
     )
+    elapsed = time.perf_counter() - start_time
+    print(f"[TIMING] Visual search completed in {elapsed:.2f} seconds")
+
     result_path = output_dir / "result.json"
     result = VisualSearchResult(
         query=query,
@@ -157,6 +163,7 @@ def run_llm_visual_search(
         final_detection=final_detection,
         output_dir=str(output_dir),
         result_json=str(result_path),
+        elapsed_seconds=elapsed,
     )
     result_path.write_text(json.dumps(asdict(result), indent=2), encoding="utf-8")
     return result

@@ -40,6 +40,7 @@ def test_run_automation_overwrites_existing_files(tmp_path):
     class FakeLocateResult:
         center: tuple[int, int] = (100, 100)
         output_dir: str = str(tmp_path)
+        elapsed_seconds: float = 0.0
 
     with (
         patch("notepad_grounding.flows.automation.runner.fetch_posts", return_value=posts),
@@ -116,6 +117,7 @@ def test_run_automation_retries_on_failure(tmp_path):
             class FakeResult:
                 center: tuple[int, int] = (100, 100)
                 output_dir: str = str(tmp_path)
+                elapsed_seconds: float = 0.0
 
             return FakeResult()
 

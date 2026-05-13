@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import asdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -149,7 +150,8 @@ def run_automation(
                     max_retries,
                 )
 
-                # === STEP 1: Ground icon ===
+                # === STEP 1-2: Ground icon + click (timed) ===
+                ground_start = time.perf_counter()
                 image = capture_desktop()
                 result = run_llm_visual_search(
                     image,
@@ -159,11 +161,12 @@ def run_automation(
                     rounds=llm_rounds,
                 )
                 center = result.center
-                logger.info("[%s] Icon found at %s", filename, center)
+                logger.info("[%s] Icon found at %s (took %.2fs)", filename, center, result.elapsed_seconds)
 
                 # === STEP 2: Click ===
                 double_click(*center)
-                logger.info("[%s] Double-clicked at %s", filename, center)
+                ground_elapsed = time.perf_counter() - ground_start
+                logger.info("[%s] Double-clicked at %s | Total grounding+click: %.2fs", filename, center, ground_elapsed)
                 sleep(2.0)
 
                 # === STEP 3: Review — did Notepad open? ===
