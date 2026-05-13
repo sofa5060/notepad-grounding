@@ -45,8 +45,11 @@ logs/
 
 # Generated screenshots and annotations.
 # Move final deliverable screenshots into docs/ or examples/ when they should be committed.
-screenshots/
 annotated/
 
 # Windows automation output
 tjm-project/
+
+# Working documents
+ROADMAP.md
+AGENTS.md
