@@ -14,7 +14,6 @@ from notepad_grounding.shared.api import ApiError
 from notepad_grounding.shared.api import fetch_posts
 from notepad_grounding.shared.automation import double_click
 from notepad_grounding.shared.automation import ensure_directory
-from notepad_grounding.shared.automation import file_exists
 from notepad_grounding.shared.automation import get_target_directory
 from notepad_grounding.shared.automation import press_hotkey
 from notepad_grounding.shared.automation import sleep
@@ -32,7 +31,6 @@ class AutomationResult:
     total_posts: int
     succeeded: int
     failed: int
-    skipped: int
     output_dir: str
     result_json: str
 
@@ -40,7 +38,7 @@ class AutomationResult:
 @dataclass(frozen=True)
 class PostResult:
     post_id: int
-    status: str  # "success", "failed", "skipped"
+    status: str  # "success", "failed"
     filename: str
     center: tuple[int, int] | None
     error: str | None
@@ -73,7 +71,6 @@ def run_automation(
     post_results: list[PostResult] = []
     succeeded = 0
     failed = 0
-    skipped = 0
 
     for post in posts:
         post_id = post["id"]
@@ -81,21 +78,6 @@ def run_automation(
         body = post["body"]
         filename = f"post_{post_id}.txt"
         full_path = get_target_directory() / filename
-
-        # Skip if already exists
-        if file_exists(filename):
-            logger.info("[%s] Already exists, skipping", filename)
-            post_results.append(
-                PostResult(
-                    post_id=post_id,
-                    status="skipped",
-                    filename=filename,
-                    center=None,
-                    error=None,
-                )
-            )
-            skipped += 1
-            continue
 
         center: tuple[int, int] | None = None
         error_msg: str | None = None
@@ -185,7 +167,6 @@ def run_automation(
         "total_posts": len(posts),
         "succeeded": succeeded,
         "failed": failed,
-        "skipped": skipped,
         "output_dir": str(output_dir),
         "results": [asdict(r) for r in post_results],
     }
@@ -199,7 +180,6 @@ def run_automation(
         total_posts=len(posts),
         succeeded=succeeded,
         failed=failed,
-        skipped=skipped,
         output_dir=str(output_dir),
         result_json=str(result_path),
     )

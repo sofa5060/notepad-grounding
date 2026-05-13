@@ -124,7 +124,6 @@ def run_automate(args: argparse.Namespace) -> int:
     print(f"total_posts={result.total_posts}")
     print(f"succeeded={result.succeeded}")
     print(f"failed={result.failed}")
-    print(f"skipped={result.skipped}")
     return 0
 
 

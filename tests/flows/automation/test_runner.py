@@ -18,7 +18,7 @@ class FakeVisionClient:
         return CellsChoice(cell_ids=cell_ids[:1], confidence=0.9, rationale="test")
 
 
-def test_run_automation_skips_existing_files(tmp_path):
+def test_run_automation_overwrites_existing_files(tmp_path):
     posts = [
         {"id": 1, "title": "Post One", "body": "Body one"},
         {"id": 2, "title": "Post Two", "body": "Body two"},
@@ -36,7 +36,6 @@ def test_run_automation_skips_existing_files(tmp_path):
         patch("notepad_grounding.flows.automation.runner.type_text") as mock_type,
         patch("notepad_grounding.flows.automation.runner.press_hotkey") as mock_hotkey,
         patch("notepad_grounding.flows.automation.runner.sleep"),
-        patch("notepad_grounding.flows.automation.runner.file_exists", side_effect=[True, False]),
         patch("notepad_grounding.flows.automation.runner.ensure_directory"),
         patch("notepad_grounding.flows.automation.runner.get_target_directory", return_value=tmp_path),
         patch("notepad_grounding.flows.automation.runner.run_llm_visual_search", return_value=FakeLocateResult()),
@@ -57,10 +56,9 @@ def test_run_automation_skips_existing_files(tmp_path):
         )
 
     assert result.total_posts == 2
-    assert result.skipped == 1
-    assert result.succeeded == 1
+    assert result.succeeded == 2
     assert result.failed == 0
-    mock_click.assert_called_once()
+    assert mock_click.call_count == 2
     mock_type.assert_called()
     mock_hotkey.assert_called()
 
@@ -75,7 +73,6 @@ def test_run_automation_retries_on_failure(tmp_path):
         patch("notepad_grounding.flows.automation.runner.type_text") as mock_type,
         patch("notepad_grounding.flows.automation.runner.press_hotkey") as mock_hotkey,
         patch("notepad_grounding.flows.automation.runner.sleep"),
-        patch("notepad_grounding.flows.automation.runner.file_exists", return_value=False),
         patch("notepad_grounding.flows.automation.runner.ensure_directory"),
         patch("notepad_grounding.flows.automation.runner.get_target_directory", return_value=tmp_path),
     ):
@@ -86,9 +83,6 @@ def test_run_automation_retries_on_failure(tmp_path):
 
         # Fail twice, succeed on third attempt
         call_count = 0
-        original_run_llm = __import__(
-            "notepad_grounding.flows.automation.runner", fromlist=["run_llm_visual_search"]
-        ).run_llm_visual_search
 
         def flaky_llm(*args, **kwargs):
             nonlocal call_count
@@ -97,7 +91,6 @@ def test_run_automation_retries_on_failure(tmp_path):
                 raise RuntimeError("Grounding failed")
             # Return minimal result
             from dataclasses import dataclass
-            from notepad_grounding.shared.geometry import Box
 
             @dataclass(frozen=True)
             class FakeResult:
@@ -137,7 +130,6 @@ def test_run_automation_fails_after_max_retries(tmp_path):
         patch("notepad_grounding.flows.automation.runner.type_text") as mock_type,
         patch("notepad_grounding.flows.automation.runner.press_hotkey") as mock_hotkey,
         patch("notepad_grounding.flows.automation.runner.sleep"),
-        patch("notepad_grounding.flows.automation.runner.file_exists", return_value=False),
         patch("notepad_grounding.flows.automation.runner.ensure_directory"),
         patch("notepad_grounding.flows.automation.runner.get_target_directory", return_value=tmp_path),
     ):
@@ -164,7 +156,6 @@ def test_run_automation_fails_after_max_retries(tmp_path):
     assert result.total_posts == 1
     assert result.succeeded == 0
     assert result.failed == 1
-    assert result.skipped == 0
     mock_click.assert_not_called()
     mock_type.assert_not_called()
     mock_hotkey.assert_not_called()
