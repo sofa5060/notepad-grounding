@@ -61,12 +61,13 @@ def run_automation(
     output_dir = output_root / "automation" / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    logger.info("Starting automation for query=%r", query)
+
     # Fetch posts
     logger.info("Fetching %d posts from JSONPlaceholder...", post_limit)
     posts = fetch_posts(limit=post_limit)
     logger.info("Fetched %d posts", len(posts))
 
-    # Ensure target directory exists
     ensure_directory(get_target_directory())
 
     post_results: list[PostResult] = []

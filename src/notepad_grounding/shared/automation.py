@@ -24,8 +24,7 @@ def press_hotkey(*keys: str) -> None:
     """Press a key combination, e.g. press_hotkey('ctrl', 's')."""
     import pyautogui
 
-    pyautogui.keyDown(keys)
-    pyautogui.keyUp(keys)
+    pyautogui.hotkey(*keys)
 
 
 def sleep(seconds: float) -> None:
