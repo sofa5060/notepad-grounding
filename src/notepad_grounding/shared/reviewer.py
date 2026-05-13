@@ -29,15 +29,13 @@ class ReviewResult:
 
 
 class OpenAIReviewClient:
-    """LLM reviewer that uses OpenAI structured outputs (Pydantic) for guaranteed format."""
+    """LLM reviewer using instructor + Pydantic for guaranteed structured output."""
 
     def __init__(self, *, model: str | None = None) -> None:
-        try:
-            from openai import OpenAI
-        except ImportError as exc:
-            raise RuntimeError("Missing OpenAI SDK. Run `uv sync`.") from exc
+        import instructor
+        from openai import OpenAI
 
-        self._client = OpenAI()
+        self._client = instructor.from_openai(OpenAI())
         self._model = resolve_openai_model(model)
 
     def review_state(
@@ -58,9 +56,9 @@ class OpenAIReviewClient:
             "3. If something is wrong, what is the exact recovery action?"
         )
 
-        # Use beta.chat.completions.parse for guaranteed structured output via Pydantic
-        completion = self._client.beta.chat.completions.parse(
+        parsed: ReviewResultModel = self._client.chat.completions.create(
             model=self._model,
+            response_model=ReviewResultModel,
             messages=[
                 {
                     "role": "user",
@@ -73,10 +71,8 @@ class OpenAIReviewClient:
                     ],
                 }
             ],
-            response_format=ReviewResultModel,
         )
 
-        parsed: ReviewResultModel = completion.choices[0].message.parsed
         return ReviewResult(
             status=parsed.status.lower().strip(),
             action_needed=parsed.action_needed.strip(),

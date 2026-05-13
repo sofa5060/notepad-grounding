@@ -14,6 +14,7 @@ from notepad_grounding.shared.api import fetch_posts
 from notepad_grounding.shared.automation import clear_target_directory
 from notepad_grounding.shared.automation import click_at
 from notepad_grounding.shared.automation import close_active_window
+from notepad_grounding.shared.automation import close_window_hard
 from notepad_grounding.shared.automation import double_click
 from notepad_grounding.shared.automation import ensure_directory
 from notepad_grounding.shared.automation import get_active_window_title
@@ -174,7 +175,15 @@ def run_automation(
                 )
                 if review.status == "wrong_app":
                     logger.warning("[%s] Reviewer detected wrong app: %s", filename, review.rationale)
-                    _handle_recovery(review.action_needed)
+                    logger.info("[%s] Closing wrong app with Alt+F4...", filename)
+                    close_window_hard()
+                    sleep(1.5)
+                    # Make sure desktop is visible before retry
+                    active = get_active_window_title()
+                    if active:
+                        logger.info("[%s] Desktop not visible yet (%r), closing again...", filename, active)
+                        close_window_hard()
+                        sleep(1.0)
                     raise RuntimeError(f"Wrong app opened: {review.rationale}")
                 elif review.status in ("error", "retry"):
                     _handle_recovery(review.action_needed)

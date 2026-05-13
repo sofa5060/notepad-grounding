@@ -128,6 +128,15 @@ def close_active_window() -> None:
     press_hotkey("ctrl", "w")
 
 
+def close_window_hard() -> None:
+    """Force-close the active window using Alt+F4 (useful for wrong apps)."""
+    import pyautogui
+    pyautogui.keyDown("alt")
+    pyautogui.keyDown("f4")
+    pyautogui.keyUp("f4")
+    pyautogui.keyUp("alt")
+
+
 def click_at(x: int, y: int, *, clicks: int = 1, duration: float = 0.5) -> None:
     """Click at screen coordinates."""
     import pyautogui
