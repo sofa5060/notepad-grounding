@@ -202,14 +202,7 @@ class OpenAIVisionClient:
         from notepad_grounding.shared.images import draw_box_on_image
 
         # Step 1: Initial bbox request
-        prompt_initial = (
-            "You are helping a Windows desktop visual grounding system. "
-            f"Locate the icon GRAPHIC (the picture itself, NOT the text label) for: {query!r}. "
-            "Return JSON only with keys: target_visible, icon_bbox, confidence, rationale. "
-            "icon_bbox must be crop-local pixel coordinates [x1, y1, x2, y2]. "
-            "Draw the box TIGHT around only the icon picture. It must NOT overlap other icons. "
-            "Do not include the text label below the icon."
-        )
+        prompt_initial = build_bbox_initial_prompt(query=query)
 
         response = self._client.responses.create(
             model=self._model,
@@ -236,16 +229,7 @@ class OpenAIVisionClient:
                 color=(255, 0, 0),
             )
 
-            prompt_validate = (
-                "I drew your suggested bounding box in RED on the image above. "
-                "Please review it carefully.\n\n"
-                "Is the red rectangle:\n"
-                "1. Centered correctly over ONLY the icon graphic (not the text label)?\n"
-                "2. Tight — not too big, not overlapping other icons?\n\n"
-                "Return JSON with keys: confirmed (true/false), corrected_icon_bbox, confidence, rationale.\n"
-                "If confirmed=true, corrected_icon_bbox should be the same as before.\n"
-                "If confirmed=false, give the corrected [x1, y1, x2, y2] coordinates."
-            )
+            prompt_validate = build_bbox_validation_prompt()
 
             response = self._client.responses.create(
                 model=self._model,
@@ -308,6 +292,36 @@ def parse_cell_choice(text: str, *, valid_cell_ids: list[str]) -> CellChoice:
     confidence = max(0.0, min(1.0, confidence))
     rationale = str(payload.get("rationale", "")).strip()
     return CellChoice(cell_id=cell_id, confidence=confidence, rationale=rationale)
+
+
+def build_bbox_initial_prompt(*, query: str) -> str:
+    return (
+        "You are helping a Windows desktop visual grounding system. "
+        f"Locate the icon GRAPHIC (the picture itself, NOT the text label) for: {query!r}. "
+        "Return JSON only with keys: target_visible, icon_bbox, confidence, rationale. "
+        "icon_bbox must be crop-local pixel coordinates [x1, y1, x2, y2]. "
+        "The CENTER of icon_bbox will be used as the mouse click target, so align the box so its center "
+        "lands on the visual center of the clickable icon graphic. "
+        "Draw the box TIGHT around only the icon picture. It must NOT overlap other icons. "
+        "Do not include the text label below the icon."
+    )
+
+
+def build_bbox_validation_prompt() -> str:
+    return (
+        "I drew your suggested bounding box in RED on the image above. "
+        "Please review it carefully.\n\n"
+        "The center point of this red rectangle will be used as the mouse click target. "
+        "The red box must be aligned exactly on the clickable icon graphic so its center is not shifted "
+        "too high, too low, left, or right.\n\n"
+        "Is the red rectangle:\n"
+        "1. Centered correctly over ONLY the icon graphic (not the text label)?\n"
+        "2. Tight around the full clickable icon graphic, not clipped and not too loose?\n"
+        "3. Not overlapping any neighboring icons or labels?\n\n"
+        "Return JSON with keys: confirmed (true/false), corrected_icon_bbox, confidence, rationale.\n"
+        "If confirmed=true, corrected_icon_bbox should be the same as before.\n"
+        "If confirmed=false, give the corrected [x1, y1, x2, y2] coordinates."
+    )
 
 
 def parse_cells_choice(text: str, *, valid_cell_ids: list[str]) -> CellsChoice:

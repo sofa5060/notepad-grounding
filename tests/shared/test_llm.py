@@ -7,6 +7,8 @@ from notepad_grounding.shared.llm import parse_cell_choice
 from notepad_grounding.shared.llm import parse_cells_choice
 from notepad_grounding.shared.llm import parse_icon_detection
 from notepad_grounding.shared.llm import resolve_openai_model
+from notepad_grounding.shared.llm import build_bbox_initial_prompt
+from notepad_grounding.shared.llm import build_bbox_validation_prompt
 
 
 def test_parse_cell_choice_accepts_valid_json():
@@ -78,3 +80,13 @@ def test_parse_icon_detection_clamps_crop_local_bbox():
         confidence=0.9,
         rationale="icon",
     )
+
+
+def test_bbox_prompts_explain_box_center_is_click_target():
+    initial = build_bbox_initial_prompt(query="Notepad")
+    validation = build_bbox_validation_prompt()
+
+    assert "click target" in initial
+    assert "center" in initial
+    assert "click target" in validation
+    assert "center point" in validation
