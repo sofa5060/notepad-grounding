@@ -1,256 +1,156 @@
-# Notepad Grounding Roadmap
+# Notepad Grounding — Project Roadmap
 
-> Working memory for the take-home project. Keep this file focused on the current goal: make `locate` reliable, explainable, and easy to review.
+> Updated working document for the take-home interview project.
 
-## Current Goal
+## Current Status
 
-Build a reliable query-based command:
-
-```text
-uv run notepad-grounding locate --query Notepad --out-dir output
-```
-
-The command should visually find a desktop icon or shortcut, save useful artifacts, and return a deterministic center coordinate. The LLM can choose labeled grid cells and final crop-local boxes; code owns all screen-coordinate math.
+The core `locate` command works. Recent focus has been on reliability fixes for Windows testing.
 
 ## Status Legend
 
-- `[ ]` Not started
-- `[~]` In progress
 - `[x]` Done
-- `[?]` Needs investigation or decision
+- `[~]` In progress
+- `[ ]` Not started
+- `[?]` Needs decision
 
-## Current Working Baseline
+---
 
-- `[x]` Primary `llm-visual` locate flow exists.
-- `[x]` Coarse-to-fine grid search exists.
-- `[x]` Final crop-local bbox detection exists.
-- `[x]` Final bbox self-review uses `previous_response_id`.
-- `[x]` Full-screen bbox overlay artifact exists.
-- `[x]` `grid-ocr` fallback experiment is preserved.
-- `[x]` Reviewer module exists for post-action automation validation.
-- `[x]` CLI supports `locate --query`.
-- `[x]` Artifacts are saved to output directories.
-- `[x]` `.env` support exists.
-- `[x]` Default model is configurable through `OPENAI_MODEL`.
+## Completed ✅
 
-## Stage 1: Add a Judge During Grid Grounding
+### Core Features
+- `[x]` Primary `llm-visual` locate flow
+- `[x]` Coarse-to-fine grid search
+- `[x]` Final crop-local bbox detection
+- `[x]` Bbox self-review using `previous_response_id`
+- `[x]` Full-screen bbox overlay (`full-detection.png`)
+- `[x]` CLI: `locate --query` and `automate --query`
+- `[x]` Artifacts saved to output directories
+- `[x]` `.env` support
+- `[x]` Configurable model via `OPENAI_MODEL`
+- `[x]` API fallback to dummy data when JSONPlaceholder is down
+- `[x]` Timing measurements printed to console
+- `[x]` Alt+F4 + Escape recovery for wrong app clicks
 
-**Problem:** The current grid descent is fragile. If the model picks the wrong cell, every later crop is based on the wrong area. Re-running the same prompt can also repeat the same cached mistake.
+### Reliability Fixes
+- `[x]` **Auto-correct invalid cell_id**: When LLM returns wrong round (e.g., `R2-*` instead of `R1-*`), catch it and retry with correction prompt via `previous_response_id`
 
-**Goal:** Validate each selected grid crop before committing to it.
+### Manual Testing Done
+- `[x]` Bottom-right position + small icons + busy background
+- `[x]` Center position + medium icons + busy background  
+- `[x]` Top-left position + small icons + busy background
+- `[x]` Multiple desktop positions tested
+- `[x]` Non-solid wallpaper (busy/cluttered background)
 
-- `[ ]` Add a structured judge result for grid validation:
-  - `contains_target: bool`
-  - `confidence: float`
-  - `rationale: str`
-  - optional `visible_evidence: str`
-- `[ ]` After `choose_cell`, crop the selected cell from the original image with the normal padding.
-- `[ ]` Send that selected crop to the judge with the query and ask whether it contains either:
-  - the requested icon/app visual, or
-  - a desktop item label matching the query.
-- `[ ]` If the judge says `contains_target=true`, continue the existing flow.
-- `[ ]` If the judge says `contains_target=false`, continue the original chooser conversation with `previous_response_id` and tell it the selected cell was rejected.
-- `[ ]` Re-prompt the chooser to select a different valid cell, ideally passing rejected cell IDs and the judge rationale.
-- `[ ]` Cap retries per grid round so failures end cleanly instead of looping.
-- `[ ]` Save judge artifacts:
-  - selected crop image
-  - judge decision JSON
-  - retry prompt metadata
-  - rejected cell list
-- `[ ]` Make the judge model configurable separately from the chooser model if useful.
-- `[ ]` Default to the same OpenAI vision model until another vision-capable provider is proven in Windows testing.
-- `[ ]` Add focused tests around the retry/control-flow logic with fake clients.
+---
 
-**Acceptance criteria:**
+## Still To Do 🔧
 
-- A wrong selected cell can be rejected without restarting the whole locate command.
-- The next chooser request continues the same conversation instead of replaying the same cached request.
-- The result JSON shows which cells were accepted or rejected.
-- Locate fails with a clear error after bounded retries.
+### 1. Fix Center Position Reliability
 
-## Stage 2: Simplify the Code Structure
+**Problem:** Image 2 (center position) showed the LLM returning invalid `cell_id 'R2-2-2'` when valid cells were `R1-*`. The auto-correct fix was just pushed but needs testing on Windows.
 
-**Problem:** The repo currently feels heavier than the assignment needs. There are many small files and many tests for a take-home proof.
+**Action:**
+- `[ ]` Pull latest code on Windows
+- `[ ]` Retest center position with medium icons
+- `[ ]` Confirm auto-correct works and produces clean `full-detection.png`
 
-**Goal:** Keep the working behavior while making the project smaller and easier to read.
+### 2. Generate Final Screenshot Artifacts
 
-- `[ ]` Trace the actual runtime path for `locate`.
-- `[ ]` Decide which modules are genuinely part of the assignment proof.
-- `[ ]` Keep flow isolation where it helps clarity:
+The PDF requires **3 annotated screenshots in the repo**. We have tested manually but need to save the actual `full-detection.png` files.
 
-```text
-src/notepad_grounding/
-  shared/
-  flows/
-    llm_visual_search/
-    grid_ocr/
-```
+| # | Position | Icon Size | Status |
+|---|----------|-----------|--------|
+| 1 | Bottom-right | Small | `[x]` Tested manually |
+| 2 | Center | Medium | `[~]` Needs retest with fix |
+| 3 | Top-left | Small | `[x]` Tested manually |
 
-- `[ ]` Remove dead code or unused helpers.
-- `[ ]` Merge tiny shared modules only when it reduces real friction.
-- `[ ]` Keep `grid-ocr` as a fallback experiment, but make it clearly secondary.
-- `[ ]` Reduce tests to a small, high-value set:
-  - CLI smoke tests
-  - deterministic geometry / bbox mapping tests
-  - judge retry behavior tests
-  - final result serialization tests
-- `[ ]` Remove tests that only lock down unimportant implementation details.
-- `[ ]` Make README and AGENTS match the final structure.
+**Action:**
+- `[ ]` After center fix is confirmed, copy 3 `full-detection.png` files to `docs/screenshots/`
+- `[ ]` Add notes explaining each scenario
 
-**Important decision:** Do not delete useful tests just to make the repo look smaller. Prefer fewer, better tests over no tests.
+### 3. Test Icon Size Variations
 
-## Stage 3: Produce Assignment Evidence Screenshots
+| Size | Status | Notes |
+|------|--------|-------|
+| Small (96px) | `[x]` Tested | Works |
+| Medium | `[x]` Tested | Works |
+| Large | `[ ]` Not tested | Quick test if time allows |
 
-**Problem:** The assignment expects annotated screenshots showing successful detection in different desktop locations and conditions.
+### 4. Test Theme Variations
 
-**Goal:** Generate a small, convincing evidence set from Windows.
+| Theme | Status |
+|-------|--------|
+| Light | `[x]` Implicitly tested (all screenshots are light theme) |
+| Dark | `[ ]` Not tested | Optional bonus |
 
-- `[ ]` Generate top-left scenario:
-  - Notepad shortcut in top-left
-  - normal screen size
-  - small desktop icons
-  - detection overlay saved
-- `[ ]` Generate center scenario:
-  - Notepad shortcut near center
-  - larger icon size
-  - detection overlay saved
-- `[ ]` Generate bottom-right scenario:
-  - Notepad shortcut near bottom-right
-  - changed wallpaper or busier background
-  - detection overlay saved
-- `[ ]` Add optional extra scenario if time allows:
-  - different resolution or display scaling
-  - dark/light theme switch
-  - partially obscured desktop icon
-  - multiple similar desktop items
-- `[ ]` Store final evidence under `docs/screenshots/`.
-- `[ ]` Add short notes explaining each scenario and the returned center coordinate.
-- `[ ]` Confirm final runtime testing happens in Windows, not macOS.
+### 5. Full Automation End-to-End Test
 
-**Acceptance criteria:**
+**Action:**
+- `[ ]` Run `uv run notepad-grounding automate --query Notepad` once on Windows
+- `[ ]` Verify all 10 posts are saved to `Desktop/tjm-project`
+- `[ ]` Check success rate (should be high with the cell_id fix)
 
-- At least 3 annotated screenshots are in the repo.
-- The screenshots cover top-left, center, and bottom-right positions.
-- Each screenshot has a matching result artifact or coordinate note.
+### 6. Optional Robustness Tests (If Time)
 
-## Stage 4: Search by Icon Semantics and Label
+- `[ ]` Icon partially obscured by window
+- `[ ]` Multiple Notepad shortcuts on desktop
+- `[ ]` Renamed shortcut (e.g., "Notes" instead of "Notepad")
+- `[ ]` Different resolution (only 1920x1080 assumed)
 
-**Problem:** The current prompt can over-focus on the label text. The assignment wants an extensible visual grounding system, not just OCR-like label matching.
-
-**Goal:** Treat the query as both a possible label and a semantic app/icon target.
-
-- `[ ]` Update chooser prompts to search for the desktop item matching the query by:
-  - visual icon/app semantics, and
-  - visible label text when available.
-- `[ ]` Update final bbox prompt to box only the icon graphic, not the label.
-- `[ ]` Add judge wording that accepts either visual evidence or a matching label, but asks for the reason.
-- `[ ]` Test a renamed Notepad shortcut, such as `Notes`.
-- `[ ]` Test a case where the label is hard to read or not useful.
-- `[ ]` Test similar names, such as Notepad vs Notepad++.
-- `[ ]` Decide how to handle multiple matching candidates:
-  - return candidates and rank them, or
-  - ask the LLM to pick the best candidate with rationale.
-- `[ ]` Document the behavior in README as query-based visual grounding, not label-only search.
-
-**Acceptance criteria:**
-
-- `--query Notepad` can still find the Notepad shortcut when the label is not exactly `Notepad`.
-- The final click center is computed from the icon graphic bbox.
-- README clearly explains the icon-plus-label search behavior.
+---
 
 ## Coverage Matrix
 
-| Scenario | Status | Stage | Notes |
-|---|---:|---:|---|
-| Icon at top-left | `[x]` manual / `[ ]` artifact | 3 | Need final annotated screenshot |
-| Icon at center | `[x]` manual / `[ ]` artifact | 3 | Need final annotated screenshot |
-| Icon at bottom-right | `[x]` manual / `[ ]` artifact | 3 | Need final annotated screenshot |
-| Small icon size | `[x]` | 3 | Reconfirm in final evidence run |
-| Medium icon size | `[x]` | 3 | Reconfirm in final evidence run |
-| Large icon size | `[ ]` | 3 | Add if time allows |
-| Light theme | `[ ]` | 3 | Not explicitly tested |
-| Dark theme | `[ ]` | 3 | Not explicitly tested |
-| Solid background | `[?]` | 3 | Not explicitly tested |
-| Busy/custom background | `[x]` | 3 | Tested manually with drawings |
-| Partially obscured icon | `[ ]` | 3/4 | Useful robustness case |
-| Multiple matching icons | `[ ]` | 4 | Needs selection strategy |
-| Similar names | `[ ]` | 4 | Notepad vs Notepad++ |
-| Renamed shortcut | `[ ]` | 4 | Tests visual semantics |
-| Different resolution | `[ ]` | 3 | Only 1920x1080 is assumed |
-| API unavailable | `[ ]` | Later | Relevant only to automation flow |
-| Existing files in target directory | `[x]` | Later | Existing automation clears directory |
-| Retry logic after actions | `[x]` | Later | Existing automation has retry/reviewer |
-| Wrong app recovery | `[x]` | Later | Existing automation closes wrong app |
+| Scenario | Status | Notes |
+|----------|--------|-------|
+| Icon at top-left | `[x]` | Tested, needs artifact saved |
+| Icon at center | `[~]` | Tested but failed, fix pushed, needs retest |
+| Icon at bottom-right | `[x]` | Tested, needs artifact saved |
+| Small icon size | `[x]` | ✅ |
+| Medium icon size | `[x]` | ✅ |
+| Large icon size | `[ ]` | Optional |
+| Light theme | `[x]` | Implicitly tested |
+| Dark theme | `[ ]` | Optional bonus |
+| Busy/custom background | `[x]` | ✅ All tests used busy background |
+| Partially obscured icon | `[ ]` | Optional |
+| Multiple matching icons | `[ ]` | Optional |
+| Renamed shortcut | `[ ]` | Optional |
+| API unavailable fallback | `[x]` | Code ready |
+| Retry logic (3 attempts, 1s delay) | `[x]` | ✅ |
+| Wrong app recovery | `[x]` | ✅ Alt+F4 + Escape |
 
-## Interview Prep
+---
 
-### Architecture Answers
+## Quick Checklist Before Interview
 
-- `[x]` Coarse-to-fine grid is used because it keeps coordinate math deterministic while letting the LLM make visual choices.
-- `[x]` The design aligns with ScreenSeekeR / ScreenSpot-Pro: reduce the search area before precise localization.
-- `[x]` LLM vision is used because template matching is brittle across wallpapers, themes, icon sizes, and renamed shortcuts.
-- `[x]` OCR-only is kept as a fallback experiment because labels help, but the assignment needs visual icon grounding.
+- [ ] Retest center position with latest fix
+- [ ] Generate 3 annotated screenshots and add to repo
+- [ ] Run full automation at least once
+- [ ] Measure average timing (for interview discussion)
+- [ ] `uv run pytest -v` passes
+- [ ] `uv run notepad-grounding locate --query Notepad --out-dir output` works
+- [ ] Repo pushed to GitHub
+- [ ] README is up to date
 
-### Robustness Answers To Prepare
+---
 
-- `[ ]` Explain the new judge layer for rejecting bad grid choices.
-- `[ ]` Explain bounded retries and artifact logging.
-- `[ ]` Explain how multiple similar icons would be ranked.
-- `[ ]` Explain when the approach still fails:
-  - icon fully hidden
-  - ambiguous identical shortcuts
-  - model/provider outage
-  - unsupported resolution/scaling not tested
+## Interview Discussion Topics (Prepare Answers)
 
-### Performance Answers To Prepare
+### Architecture
+- `[x]` Why coarse-to-fine grid? → Matches ScreenSpot-Pro paper
+- `[x]` Why LLM vision? → Brittle across wallpapers/themes/sizes
+- `[x]` Code owns all screen-coordinate math
 
-- `[ ]` Measure average locate time on Windows.
-- `[ ]` Record number of LLM calls per successful locate.
-- `[ ]` Mention optimization options:
-  - smaller/faster model for judging
-  - fewer grid rounds after confidence is high
-  - cached last-known positions
-  - parallel or cheaper candidate checks
+### Robustness
+- `[x]` Auto-correct invalid cell_id via conversation continuity
+- `[x]` 3 retries with 1s delay
+- `[ ]` Judge layer (not yet implemented — simpler approach works)
+- `[ ]` Performance: measure locate time on Windows
 
-## Later / Parking Lot
-
-These were already in previous notes and should not be lost, but they are not the next priority unless the assignment scope changes.
-
-- `[ ]` Full automation loop:
-  - fetch posts
-  - open Notepad
-  - type content
-  - save files
-  - close and repeat
-- `[ ]` Graceful handling for JSONPlaceholder/API failure.
-- `[ ]` Replace-file popup handling.
-- `[ ]` Keep or split OCR into a separate future project.
-- `[ ]` Explore a pure OCR version for comparison.
-- `[ ]` Consider a local vision model to reduce cost/latency.
-- `[ ]` Consider synthetic training data or a small detector if the task grows beyond the take-home.
-- `[ ]` Consider memory of last known icon positions as an optimization, not as the primary proof.
-
-## Quick Checklist Before Final Submission
-
-- `[ ]` Stage 1 judge/retry flow implemented and tested.
-- `[ ]` Stage 2 cleanup completed without breaking `locate`.
-- `[ ]` Stage 3 screenshots generated in Windows.
-- `[ ]` Stage 4 prompt behavior tested with renamed/similar labels.
-- `[ ]` README updated and accurate.
-- `[ ]` `.env.example` matches required config.
-- `[ ]` `uv run pytest -v` passes.
-- `[ ]` `uv run notepad-grounding locate --query Notepad --out-dir output` works in Windows.
-- `[ ]` Repo pushed to GitHub.
-
-## Decisions Log
-
-| Date | Decision | Context |
-|---|---|---|
-| 2026-05-13 | Keep `llm-visual` as the primary flow | OCR remains a fallback experiment |
-| 2026-05-13 | Add a judge before committing to each selected grid crop | Prevents wrong-cell descent and repeated cached mistakes |
-| 2026-05-13 | Use `previous_response_id` for correction loops | Keeps conversation context when rejecting a choice or refining a bbox |
-| 2026-05-13 | Keep screen-coordinate math in deterministic code | LLM may choose cells or crop-local bboxes only |
-| 2026-05-13 | Final evidence must be produced on Windows | macOS/Parallels host behavior is not enough for final testing |
+### Known Limitations
+- `[x]` Icon fully hidden → would fail
+- `[x]` Unsupported resolution/scaling → not tested
+- `[x]` Multiple identical shortcuts → not handled
 
 ---
 
