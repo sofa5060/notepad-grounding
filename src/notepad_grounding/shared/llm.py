@@ -34,6 +34,9 @@ class VisionClient(Protocol):
     def choose_cells(self, *, query: str, image: Image.Image, cell_ids: list[str]) -> "CellsChoice":
         """Choose all grid cells that contain any part of the visual target."""
 
+    def choose_click_point(self, *, query: str, image: Image.Image, point_ids: list[str]) -> "ClickPointChoice":
+        """Choose the labeled click point closest to the center of the visual target."""
+
     def locate_icon(self, *, query: str, image: Image.Image) -> "IconDetection":
         """Return a crop-local icon bounding box for the visual target."""
 
@@ -51,6 +54,14 @@ class CellsChoice:
     cell_ids: list[str]
     confidence: float
     rationale: str
+
+
+@dataclass(frozen=True)
+class ClickPointChoice:
+    point_id: str
+    confidence: float
+    rationale: str
+    response_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -170,6 +181,28 @@ class OpenAIVisionClient:
             ],
         )
         return parse_cells_choice(response.output_text, valid_cell_ids=cell_ids)
+
+    def choose_click_point(self, *, query: str, image: Image.Image, point_ids: list[str]) -> ClickPointChoice:
+        prompt = build_click_point_prompt(query=query, point_ids=point_ids)
+        response = self._client.responses.create(
+            model=self._model,
+            input=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": prompt},
+                        {"type": "input_image", "image_url": image_to_data_url(image), "detail": "high"},
+                    ],
+                }
+            ],
+        )
+        choice = parse_click_point_choice(response.output_text, valid_point_ids=point_ids)
+        return ClickPointChoice(
+            point_id=choice.point_id,
+            confidence=choice.confidence,
+            rationale=choice.rationale,
+            response_id=response.id,
+        )
 
     def locate_icon(self, *, query: str, image: Image.Image) -> IconDetection:
         prompt = (
@@ -337,6 +370,33 @@ def parse_cell_choice(text: str, *, valid_cell_ids: list[str]) -> CellChoice:
     confidence = max(0.0, min(1.0, confidence))
     rationale = str(payload.get("rationale", "")).strip()
     return CellChoice(cell_id=cell_id, confidence=confidence, rationale=rationale)
+
+
+def parse_click_point_choice(text: str, *, valid_point_ids: list[str]) -> ClickPointChoice:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"LLM did not return valid JSON: {text}") from exc
+
+    point_id = str(payload.get("point_id", "")).strip()
+    if point_id not in valid_point_ids:
+        raise ValueError(f"LLM returned invalid point_id {point_id!r}; expected one of {valid_point_ids}")
+
+    confidence = float(payload.get("confidence", 0))
+    confidence = max(0.0, min(1.0, confidence))
+    rationale = str(payload.get("rationale", "")).strip()
+    return ClickPointChoice(point_id=point_id, confidence=confidence, rationale=rationale)
+
+
+def build_click_point_prompt(*, query: str, point_ids: list[str]) -> str:
+    return (
+        "You are helping a Windows desktop visual grounding system choose a click target. "
+        f"The image contains red labeled crosshair points. Find the point closest to the CENTER of the clickable icon graphic for: {query!r}. "
+        "Choose the point that should be clicked to open the target. Focus on the icon graphic itself, not the text label below it. "
+        "Return JSON only with keys point_id, confidence, rationale. "
+        f"Valid point_id values are: {', '.join(point_ids)}. "
+        "Do not return pixel coordinates."
+    )
 
 
 def build_bbox_initial_prompt(*, query: str) -> str:

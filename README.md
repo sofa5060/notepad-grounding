@@ -31,14 +31,13 @@ The grounding uses a **coarse-to-fine grid search**:
 5. **Retry if rejected** — if the judge rejects the crop, the chooser is told which cell was wrong and must pick a different cell in the same conversation
 6. **Crop** — once accepted, crops the selected region with padding
 7. **Repeat** — draws a finer 3×3 grid on the crop, LLM picks again
-8. **Iterative bbox refinement** — once the crop is small enough:
-   - LLM gives initial icon bounding box coordinates
-   - Code draws the bbox in **red** on the image
-   - The drawn image is sent back to the **same conversation** (`previous_response_id`)
-   - LLM reviews: *"Is the red rectangle correctly placed over ONLY the icon?"*
-   - If wrong, LLM gives corrected coordinates
-   - Repeat up to 3× until confirmed
-9. **Center calculation** — code computes the center of the final bbox in screen coordinates
+8. **Marked click-point refinement** — once the crop is small enough:
+   - Code draws a 9×9 set of labeled red click targets over the crop
+   - LLM chooses the point closest to the center of the clickable icon graphic
+   - Code crops around that point and draws a finer 5×5 point grid
+   - LLM chooses the final point ID
+9. **Center calculation** — code maps the selected point ID back to screen coordinates
+10. **Bbox fallback** — if marked-point selection fails, the existing bbox refinement flow still runs automatically
 
 All artifacts (grids, crops, detections) are saved under `output/llm_visual_search/<timestamp>/`.
 
@@ -72,7 +71,8 @@ The system uses three separate validation layers:
 | Layer | When it runs | What it checks |
 |-------|--------------|----------------|
 | Grid judge | After every selected grid cell | The selected crop contains the requested icon/app visual or matching label |
-| Bbox reviewer | After final icon bbox prediction | The red rectangle is tight around only the icon graphic |
+| Marked click points | At final precision | The LLM chooses labeled points instead of raw pixel coordinates |
+| Bbox reviewer | Fallback after point selection failure | The red rectangle is tight around only the icon graphic |
 | Automation reviewer | After click/type/save/close actions | The desktop state matches the expected outcome |
 
 If the grid judge rejects a selected cell, the chooser is corrected in the same conversation and must choose another cell. If all judge retries fail, `locate` stops with saved judge crop/result artifacts instead of continuing toward a likely wrong click.
@@ -188,11 +188,19 @@ Artifacts saved:
 - `01-judge-result-attempt-1.json` — structured judge verdict
 - `02-grid.png`, `02-selected.png` — round 2 grid
 - `final-crop.png` — final cropped region
+- `click-points-01.png` — coarse final click-point overlay
+- `click-points-01-result.json` — selected coarse point
+- `click-points-02-crop.png` — refinement crop around the coarse point
+- `click-points-02.png` — fine final click-point overlay
+- `click-points-02-result.json` — selected fine point and mapped coordinates
+- `click-point-final.png` — final selected click point
+- `click-point-final.json` — final point result
+- `click-point-error.json` — written only if point selection fails and bbox fallback starts
 - `bbox-initial-result.json` — initial bbox model output
 - `bbox-review-01.png` — red bbox image sent back for review
 - `bbox-review-01-result.json` — bbox reviewer response for that iteration
 - `bbox-final-result.json` — final bbox used for center/click calculation
-- `final-detection.png` — detection with red bbox
+- `final-detection.png` — detection with red bbox, written when bbox fallback is used
 - `result.json` — full result with center coordinates
 
 ### `automate` — Full workflow
@@ -230,6 +238,7 @@ src/notepad_grounding/
     automation.py                  # Mouse/keyboard helpers (pyautogui)
     api.py                         # JSONPlaceholder fetch
     capture.py                     # Screenshot capture (mss)
+    click_points.py                # Marked click-point overlays and mapping
     env.py                         # .env file loader
     geometry.py                    # Grid cell math, box operations
     images.py                      # Image drawing (grid, bbox)
@@ -238,7 +247,7 @@ src/notepad_grounding/
     schemas.py                     # Pydantic models for LLM outputs
   flows/
     llm_visual_search/
-      flow.py                      # Coarse-to-fine grounding + bbox refinement
+      flow.py                      # Coarse-to-fine grounding + marked-point/bbox final precision
     automation/
       runner.py                    # Full Notepad automation loop
     grid_ocr/                      # Fallback OCR flow (deprecated)
@@ -246,11 +255,11 @@ src/notepad_grounding/
 
 ## Key Design Decisions
 
-### 1. No Pixel Coordinates from LLM (Except Bbox Refinement)
-The LLM only picks **labeled grid cells** during coarse search. Code owns all screen-coordinate math. This is deterministic and reliable.
+### 1. No Pixel Coordinates from LLM
+The LLM picks **labeled grid cells** during coarse search and **labeled click points** during final precision. Code owns all screen-coordinate math. This is deterministic and reliable.
 
-### 2. Iterative Bbox Refinement with Visual Feedback
-Instead of a one-shot bbox request, the system shows the LLM its own bbox and asks for corrections. This leverages the LLM's visual reasoning in a feedback loop.
+### 2. Marked Click-Point Precision with Bbox Fallback
+The final click target is selected from visible red point labels, then mapped to screen coordinates in code. The older bbox refinement path remains available as fallback while the point method is tested.
 
 ### 3. Reviewer Validates Every Action
 A separate LLM call after every action catches errors early:

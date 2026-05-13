@@ -2,9 +2,11 @@ import pytest
 from PIL import Image
 
 from notepad_grounding.shared.llm import CellChoice
+from notepad_grounding.shared.llm import ClickPointChoice
 from notepad_grounding.shared.llm import CellsChoice
 from notepad_grounding.shared.llm import IconDetection
 from notepad_grounding.shared.llm import OpenAIVisionClient
+from notepad_grounding.shared.llm import parse_click_point_choice
 from notepad_grounding.shared.llm import parse_cell_choice
 from notepad_grounding.shared.llm import parse_cells_choice
 from notepad_grounding.shared.llm import parse_icon_detection
@@ -82,6 +84,23 @@ def test_parse_icon_detection_clamps_crop_local_bbox():
         confidence=0.9,
         rationale="icon",
     )
+
+
+def test_parse_click_point_choice_accepts_valid_json_and_clamps_confidence():
+    choice = parse_click_point_choice(
+        '{"point_id": "P05", "confidence": 1.7, "rationale": "center of icon"}',
+        valid_point_ids=["P01", "P05"],
+    )
+
+    assert choice == ClickPointChoice(point_id="P05", confidence=1.0, rationale="center of icon")
+
+
+def test_parse_click_point_choice_rejects_invalid_point_id():
+    with pytest.raises(ValueError):
+        parse_click_point_choice(
+            '{"point_id": "P99", "confidence": 0.8, "rationale": "bad"}',
+            valid_point_ids=["P01", "P02"],
+        )
 
 
 def test_bbox_prompts_explain_box_center_is_click_target():
