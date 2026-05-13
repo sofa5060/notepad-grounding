@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -8,6 +7,7 @@ from PIL import Image
 
 from notepad_grounding.shared.images import image_to_data_url
 from notepad_grounding.shared.llm import resolve_openai_model
+from notepad_grounding.shared.schemas import ReviewResultModel
 
 
 class ReviewClient(Protocol):
@@ -29,6 +29,8 @@ class ReviewResult:
 
 
 class OpenAIReviewClient:
+    """LLM reviewer that uses OpenAI structured outputs (Pydantic) for guaranteed format."""
+
     def __init__(self, *, model: str | None = None) -> None:
         try:
             from openai import OpenAI
@@ -53,43 +55,30 @@ class OpenAIReviewClient:
             "Look at the screenshot and determine:\n"
             "1. Is the expected state achieved?\n"
             "2. Is there an unexpected pop-up, dialog, or wrong window open?\n"
-            "3. If something is wrong, what is the exact recovery action?\n\n"
-            "Return JSON only with keys: status, action_needed, rationale.\n"
-            "status must be one of: success, wrong_app, pop_up, error, retry.\n"
-            "action_needed: a brief instruction like 'click Replace button', "
-            "'close wrong window and retry', 'proceed', 'wait longer', etc."
+            "3. If something is wrong, what is the exact recovery action?"
         )
-        response = self._client.responses.create(
+
+        # Use beta.chat.completions.parse for guaranteed structured output via Pydantic
+        completion = self._client.beta.chat.completions.parse(
             model=self._model,
-            input=[
+            messages=[
                 {
                     "role": "user",
                     "content": [
-                        {"type": "input_text", "text": prompt},
-                        {"type": "input_image", "image_url": image_to_data_url(image), "detail": "high"},
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_to_data_url(image), "detail": "high"},
+                        },
                     ],
                 }
             ],
+            response_format=ReviewResultModel,
         )
-        return parse_review_result(response.output_text)
 
-
-def parse_review_result(text: str) -> ReviewResult:
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"LLM did not return valid JSON: {text}") from exc
-
-    status = str(payload.get("status", "error")).strip().lower()
-    valid_statuses = {"success", "wrong_app", "pop_up", "error", "retry"}
-    if status not in valid_statuses:
-        status = "error"
-
-    action_needed = str(payload.get("action_needed", "retry")).strip()
-    rationale = str(payload.get("rationale", "")).strip()
-
-    return ReviewResult(
-        status=status,
-        action_needed=action_needed,
-        rationale=rationale,
-    )
+        parsed: ReviewResultModel = completion.choices[0].message.parsed
+        return ReviewResult(
+            status=parsed.status.lower().strip(),
+            action_needed=parsed.action_needed.strip(),
+            rationale=parsed.rationale.strip(),
+        )

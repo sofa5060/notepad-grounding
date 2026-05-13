@@ -11,6 +11,7 @@ from PIL import Image
 from notepad_grounding.flows.llm_visual_search.flow import run_llm_visual_search
 from notepad_grounding.shared.api import ApiError
 from notepad_grounding.shared.api import fetch_posts
+from notepad_grounding.shared.automation import clear_target_directory
 from notepad_grounding.shared.automation import click_at
 from notepad_grounding.shared.automation import close_active_window
 from notepad_grounding.shared.automation import double_click
@@ -120,6 +121,8 @@ def run_automation(
     logger.info("Fetched %d posts", len(posts))
 
     ensure_directory(get_target_directory())
+    clear_target_directory()
+    logger.info("Cleared target directory: %s", get_target_directory())
 
     post_results: list[PostResult] = []
     succeeded = 0

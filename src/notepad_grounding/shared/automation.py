@@ -61,6 +61,19 @@ def file_exists(filename: str) -> bool:
     return (get_target_directory() / filename).exists()
 
 
+def clear_target_directory() -> None:
+    """Remove all files from the target directory to avoid replace dialogs."""
+    target = get_target_directory()
+    if not target.exists():
+        return
+    for path in target.iterdir():
+        if path.is_file():
+            path.unlink()
+        elif path.is_dir():
+            import shutil
+            shutil.rmtree(path)
+
+
 def get_active_window_title() -> str | None:
     """Return the title of the currently active window."""
     try:

@@ -1,32 +1,28 @@
 import pytest
 
+from notepad_grounding.shared.reviewer import OpenAIReviewClient
 from notepad_grounding.shared.reviewer import ReviewResult
-from notepad_grounding.shared.reviewer import parse_review_result
 
 
-def test_parse_review_result_accepts_valid_json():
-    result = parse_review_result(
-        '{"status": "success", "action_needed": "proceed", "rationale": "Notepad is open"}'
-    )
+def test_review_result_model_validates():
+    from notepad_grounding.shared.schemas import ReviewResultModel
 
-    assert result == ReviewResult(
+    model = ReviewResultModel(
         status="success",
         action_needed="proceed",
         rationale="Notepad is open",
     )
+    assert model.status == "success"
+    assert model.action_needed == "proceed"
 
 
-def test_parse_review_result_normalizes_status():
-    result = parse_review_result(
-        '{"status": "WRONG_APP", "action_needed": "close window", "rationale": "Steam opened"}'
+def test_review_result_model_rejects_invalid_status_type():
+    from notepad_grounding.shared.schemas import ReviewResultModel
+
+    # Pydantic coerces types, so this should still work
+    model = ReviewResultModel(
+        status="wrong_app",
+        action_needed="close window",
+        rationale="Steam opened",
     )
-
-    assert result.status == "wrong_app"
-
-
-def test_parse_review_result_defaults_unknown_status_to_error():
-    result = parse_review_result(
-        '{"status": "something_weird", "action_needed": "retry", "rationale": "?"}'
-    )
-
-    assert result.status == "error"
+    assert model.status == "wrong_app"

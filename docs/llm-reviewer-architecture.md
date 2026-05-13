@@ -84,6 +84,32 @@ class ReviewClient:
         ...
 ```
 
+### Structured Outputs with Pydantic
+
+Instead of parsing raw JSON text, we use OpenAI's **structured outputs** (`beta.chat.completions.parse`) with Pydantic models:
+
+```python
+from pydantic import BaseModel, Field
+
+class ReviewResultModel(BaseModel):
+    status: str = Field(..., description="One of: success, wrong_app, pop_up, error, retry")
+    action_needed: str = Field(..., description="Recovery action to take")
+    rationale: str = Field(..., description="Explanation")
+
+completion = client.beta.chat.completions.parse(
+    model="gpt-4o",
+    messages=[...],
+    response_format=ReviewResultModel,
+)
+result = completion.choices[0].message.parsed  # guaranteed Pydantic object
+```
+
+**Benefits:**
+- No JSON parsing errors
+- Guaranteed schema compliance
+- Type-safe throughout the pipeline
+- No manual validation needed
+
 ### Prompt Design
 
 ```
@@ -91,13 +117,13 @@ You are a desktop automation reviewer. I just performed: {action_description}
 
 Expected state: {expected_state_description}
 
-Look at the screenshot and tell me:
-1. Is the expected state achieved? (yes/no)
-2. What is actually on screen?
-3. If not as expected, what recovery action should I take?
-
-Return JSON: {"status": "...", "action_needed": "...", "rationale": "..."}
+Look at the screenshot and determine:
+1. Is the expected state achieved?
+2. Is there an unexpected pop-up, dialog, or wrong window open?
+3. If something is wrong, what is the exact recovery action?
 ```
+
+The response format is enforced by the Pydantic schema, not by prompt text.
 
 ## Next Steps
 
