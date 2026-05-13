@@ -59,3 +59,52 @@ def get_target_directory() -> Path:
 def file_exists(filename: str) -> bool:
     """Check if a file already exists in the target directory."""
     return (get_target_directory() / filename).exists()
+
+
+def get_active_window_title() -> str | None:
+    """Return the title of the currently active window."""
+    try:
+        import pyautogui
+        return pyautogui.getActiveWindowTitle()
+    except Exception:
+        return None
+
+
+def is_window_active(title_substring: str) -> bool:
+    """Check if the active window title contains the given substring."""
+    active = get_active_window_title()
+    if active is None:
+        return False
+    return title_substring.lower() in active.lower()
+
+
+def wait_for_window(title_substring: str, *, timeout: float = 5.0, poll_interval: float = 0.5) -> bool:
+    """Wait until a window with the given title substring becomes active.
+
+    Returns True if found, False if timeout exceeded.
+    """
+    import pyautogui
+
+    elapsed = 0.0
+    while elapsed < timeout:
+        active = get_active_window_title()
+        if active and title_substring.lower() in active.lower():
+            return True
+        time.sleep(poll_interval)
+        elapsed += poll_interval
+    return False
+
+
+def wait_for_window_close(title_substring: str, *, timeout: float = 5.0, poll_interval: float = 0.5) -> bool:
+    """Wait until a window with the given title substring is no longer active.
+
+    Returns True if closed, False if timeout exceeded.
+    """
+    elapsed = 0.0
+    while elapsed < timeout:
+        active = get_active_window_title()
+        if active is None or title_substring.lower() not in active.lower():
+            return True
+        time.sleep(poll_interval)
+        elapsed += poll_interval
+    return False

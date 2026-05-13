@@ -14,10 +14,14 @@ from notepad_grounding.shared.api import ApiError
 from notepad_grounding.shared.api import fetch_posts
 from notepad_grounding.shared.automation import double_click
 from notepad_grounding.shared.automation import ensure_directory
+from notepad_grounding.shared.automation import get_active_window_title
 from notepad_grounding.shared.automation import get_target_directory
+from notepad_grounding.shared.automation import is_window_active
 from notepad_grounding.shared.automation import press_hotkey
 from notepad_grounding.shared.automation import sleep
 from notepad_grounding.shared.automation import type_text
+from notepad_grounding.shared.automation import wait_for_window
+from notepad_grounding.shared.automation import wait_for_window_close
 from notepad_grounding.shared.capture import capture_desktop
 from notepad_grounding.shared.llm import OpenAIVisionClient
 from notepad_grounding.shared.llm import VisionClient
@@ -109,7 +113,13 @@ def run_automation(
                 logger.info("[%s] Double-clicked at %s", filename, center)
 
                 # 3. Wait for Notepad to open
-                sleep(2.0)
+                logger.info("[%s] Waiting for Notepad window...", filename)
+                if not wait_for_window("Notepad", timeout=5.0):
+                    active = get_active_window_title()
+                    raise RuntimeError(
+                        f"Notepad did not become active window. Current: {active!r}"
+                    )
+                logger.info("[%s] Notepad is active", filename)
 
                 # 4. Type content
                 content = f"Title: {title}\n\n{body}"
@@ -126,10 +136,26 @@ def run_automation(
                 sleep(0.5)  # wait for save to complete
                 logger.info("[%s] Saved to %s", filename, full_path)
 
-                # 6. Wait for save then close Notepad
-                sleep(1.0)
+                # 6. Verify Notepad is still active before closing
+                if not is_window_active("Notepad"):
+                    active = get_active_window_title()
+                    raise RuntimeError(
+                        f"Notepad is no longer active before close. Current: {active!r}"
+                    )
+                logger.info("[%s] Closing Notepad...", filename)
                 press_hotkey("ctrl", "shift", "w")
-                logger.info("[%s] Closed Notepad", filename)
+
+                # 7. Wait for Notepad to actually close
+                logger.info("[%s] Waiting for Notepad to close...", filename)
+                if not wait_for_window_close("Notepad", timeout=5.0):
+                    active = get_active_window_title()
+                    logger.warning(
+                        "[%s] Notepad may still be active after close attempt. Current: %r",
+                        filename,
+                        active,
+                    )
+                else:
+                    logger.info("[%s] Notepad closed confirmed", filename)
 
                 status = "success"
                 succeeded += 1

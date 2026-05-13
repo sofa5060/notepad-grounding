@@ -38,6 +38,9 @@ def test_run_automation_overwrites_existing_files(tmp_path):
         patch("notepad_grounding.flows.automation.runner.sleep"),
         patch("notepad_grounding.flows.automation.runner.ensure_directory"),
         patch("notepad_grounding.flows.automation.runner.get_target_directory", return_value=tmp_path),
+        patch("notepad_grounding.flows.automation.runner.wait_for_window", return_value=True),
+        patch("notepad_grounding.flows.automation.runner.is_window_active", return_value=True),
+        patch("notepad_grounding.flows.automation.runner.wait_for_window_close", return_value=True),
         patch("notepad_grounding.flows.automation.runner.run_llm_visual_search", return_value=FakeLocateResult()),
     ):
         mock_image = MagicMock()
@@ -75,6 +78,9 @@ def test_run_automation_retries_on_failure(tmp_path):
         patch("notepad_grounding.flows.automation.runner.sleep"),
         patch("notepad_grounding.flows.automation.runner.ensure_directory"),
         patch("notepad_grounding.flows.automation.runner.get_target_directory", return_value=tmp_path),
+        patch("notepad_grounding.flows.automation.runner.wait_for_window", return_value=True),
+        patch("notepad_grounding.flows.automation.runner.is_window_active", return_value=True),
+        patch("notepad_grounding.flows.automation.runner.wait_for_window_close", return_value=True),
     ):
         mock_image = MagicMock()
         mock_image.width = 1920
