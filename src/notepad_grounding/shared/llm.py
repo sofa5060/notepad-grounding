@@ -84,11 +84,11 @@ class OpenAIVisionClient:
     def choose_cells(self, *, query: str, image: Image.Image, cell_ids: list[str]) -> CellsChoice:
         prompt = (
             "You are helping a Windows desktop visual grounding system. "
-            f"Find ALL grid cells that contain any part of the desktop icon or shortcut for: {query!r}. "
-            "The icon graphic or its text label may overlap multiple adjacent cells. "
+            f"Find ALL grid cells that contain any part of the ICON GRAPHIC (the picture/image itself, NOT the text label underneath) for: {query!r}. "
+            "The icon graphic may overlap multiple adjacent cells. Focus only on the visual picture of the icon, ignore the text label below it. "
             "Return JSON only with keys cell_ids (list of strings), confidence, rationale. "
             f"Valid cell_id values are: {', '.join(cell_ids)}. "
-            "Return every cell_id that overlaps with the icon. Do not return pixel coordinates."
+            "Return every cell_id that overlaps with the icon graphic. Do not return pixel coordinates."
         )
         response = self._client.responses.create(
             model=self._model,
