@@ -2,28 +2,21 @@ from dataclasses import dataclass
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
-import pytest
-
-from notepad_grounding.flows.automation.runner import PostResult
-from notepad_grounding.flows.automation.runner import run_automation
-from notepad_grounding.shared.llm import CellChoice
-from notepad_grounding.shared.llm import CellsChoice
-from notepad_grounding.shared.reviewer import ReviewResult
+from notepad_grounding.automate import run_automation
+from notepad_grounding.models import CellChoice
+from notepad_grounding.models import DesktopReviewResult
 
 
 class FakeVisionClient:
     def choose_cell(self, *, query, image, cell_ids):
         return CellChoice(cell_id=cell_ids[0], confidence=0.9, rationale="test")
 
-    def choose_cells(self, *, query, image, cell_ids):
-        return CellsChoice(cell_ids=cell_ids[:1], confidence=0.9, rationale="test")
 
-
-class FakeReviewClient:
+class FakeDesktopReviewer:
     """Always returns success so tests don't need real OpenAI calls."""
 
-    def review_state(self, *, action, expected, image):
-        return ReviewResult(
+    def review_desktop_state(self, *, action, expected, image):
+        return DesktopReviewResult(
             status="success",
             action_needed="proceed",
             rationale="fake reviewer says all good",
@@ -43,18 +36,16 @@ def test_run_automation_overwrites_existing_files(tmp_path):
         elapsed_seconds: float = 0.0
 
     with (
-        patch("notepad_grounding.flows.automation.runner.fetch_posts", return_value=posts),
-        patch("notepad_grounding.flows.automation.runner.capture_desktop") as mock_capture,
-        patch("notepad_grounding.flows.automation.runner.double_click") as mock_click,
-        patch("notepad_grounding.flows.automation.runner.type_text") as mock_type,
-        patch("notepad_grounding.flows.automation.runner.press_hotkey") as mock_hotkey,
-        patch("notepad_grounding.flows.automation.runner.sleep"),
-        patch("notepad_grounding.flows.automation.runner.ensure_directory"),
-        patch("notepad_grounding.flows.automation.runner.get_target_directory", return_value=tmp_path),
-        patch("notepad_grounding.flows.automation.runner.wait_for_window", return_value=True),
-        patch("notepad_grounding.flows.automation.runner.is_window_active", return_value=True),
-        patch("notepad_grounding.flows.automation.runner.wait_for_window_close", return_value=True),
-        patch("notepad_grounding.flows.automation.runner.run_llm_visual_search", return_value=FakeLocateResult()),
+        patch("notepad_grounding.automate.fetch_posts", return_value=posts),
+        patch("notepad_grounding.automate.capture_desktop") as mock_capture,
+        patch("notepad_grounding.automate.double_click") as mock_click,
+        patch("notepad_grounding.automate.type_text") as mock_type,
+        patch("notepad_grounding.automate.press_hotkey") as mock_hotkey,
+        patch("notepad_grounding.automate.sleep"),
+        patch("notepad_grounding.automate.ensure_directory"),
+        patch("notepad_grounding.automate.get_target_directory", return_value=tmp_path),
+        patch("notepad_grounding.automate.is_window_active", return_value=True),
+        patch("notepad_grounding.automate.run_locate", return_value=FakeLocateResult()),
     ):
         mock_image = MagicMock()
         mock_image.width = 1920
@@ -62,11 +53,13 @@ def test_run_automation_overwrites_existing_files(tmp_path):
         mock_capture.return_value = mock_image
 
         client = FakeVisionClient()
-        reviewer = FakeReviewClient()
+        desktop_reviewer = FakeDesktopReviewer()
         result = run_automation(
             query="Notepad",
             client=client,
-            reviewer=reviewer,
+            desktop_reviewer=desktop_reviewer,
+            target_reviewer=object(),
+            bbox_reviewer=object(),
             output_root=tmp_path,
             timestamp="test",
             max_retries=1,
@@ -85,17 +78,15 @@ def test_run_automation_retries_on_failure(tmp_path):
     posts = [{"id": 1, "title": "Post One", "body": "Body one"}]
 
     with (
-        patch("notepad_grounding.flows.automation.runner.fetch_posts", return_value=posts),
-        patch("notepad_grounding.flows.automation.runner.capture_desktop") as mock_capture,
-        patch("notepad_grounding.flows.automation.runner.double_click") as mock_click,
-        patch("notepad_grounding.flows.automation.runner.type_text") as mock_type,
-        patch("notepad_grounding.flows.automation.runner.press_hotkey") as mock_hotkey,
-        patch("notepad_grounding.flows.automation.runner.sleep"),
-        patch("notepad_grounding.flows.automation.runner.ensure_directory"),
-        patch("notepad_grounding.flows.automation.runner.get_target_directory", return_value=tmp_path),
-        patch("notepad_grounding.flows.automation.runner.wait_for_window", return_value=True),
-        patch("notepad_grounding.flows.automation.runner.is_window_active", return_value=True),
-        patch("notepad_grounding.flows.automation.runner.wait_for_window_close", return_value=True),
+        patch("notepad_grounding.automate.fetch_posts", return_value=posts),
+        patch("notepad_grounding.automate.capture_desktop") as mock_capture,
+        patch("notepad_grounding.automate.double_click") as mock_click,
+        patch("notepad_grounding.automate.type_text") as mock_type,
+        patch("notepad_grounding.automate.press_hotkey") as mock_hotkey,
+        patch("notepad_grounding.automate.sleep"),
+        patch("notepad_grounding.automate.ensure_directory"),
+        patch("notepad_grounding.automate.get_target_directory", return_value=tmp_path),
+        patch("notepad_grounding.automate.is_window_active", return_value=True),
     ):
         mock_image = MagicMock()
         mock_image.width = 1920
@@ -121,13 +112,15 @@ def test_run_automation_retries_on_failure(tmp_path):
 
             return FakeResult()
 
-        with patch("notepad_grounding.flows.automation.runner.run_llm_visual_search", side_effect=flaky_llm):
+        with patch("notepad_grounding.automate.run_locate", side_effect=flaky_llm):
             client = FakeVisionClient()
-            reviewer = FakeReviewClient()
+            desktop_reviewer = FakeDesktopReviewer()
             result = run_automation(
                 query="Notepad",
                 client=client,
-                reviewer=reviewer,
+                desktop_reviewer=desktop_reviewer,
+                target_reviewer=object(),
+                bbox_reviewer=object(),
                 output_root=tmp_path,
                 timestamp="test",
                 max_retries=3,
@@ -148,14 +141,14 @@ def test_run_automation_fails_after_max_retries(tmp_path):
     posts = [{"id": 1, "title": "Post One", "body": "Body one"}]
 
     with (
-        patch("notepad_grounding.flows.automation.runner.fetch_posts", return_value=posts),
-        patch("notepad_grounding.flows.automation.runner.capture_desktop") as mock_capture,
-        patch("notepad_grounding.flows.automation.runner.double_click") as mock_click,
-        patch("notepad_grounding.flows.automation.runner.type_text") as mock_type,
-        patch("notepad_grounding.flows.automation.runner.press_hotkey") as mock_hotkey,
-        patch("notepad_grounding.flows.automation.runner.sleep"),
-        patch("notepad_grounding.flows.automation.runner.ensure_directory"),
-        patch("notepad_grounding.flows.automation.runner.get_target_directory", return_value=tmp_path),
+        patch("notepad_grounding.automate.fetch_posts", return_value=posts),
+        patch("notepad_grounding.automate.capture_desktop") as mock_capture,
+        patch("notepad_grounding.automate.double_click") as mock_click,
+        patch("notepad_grounding.automate.type_text") as mock_type,
+        patch("notepad_grounding.automate.press_hotkey") as mock_hotkey,
+        patch("notepad_grounding.automate.sleep"),
+        patch("notepad_grounding.automate.ensure_directory"),
+        patch("notepad_grounding.automate.get_target_directory", return_value=tmp_path),
     ):
         mock_image = MagicMock()
         mock_image.width = 1920
@@ -165,13 +158,15 @@ def test_run_automation_fails_after_max_retries(tmp_path):
         def always_fail(*args, **kwargs):
             raise RuntimeError("Always fails")
 
-        with patch("notepad_grounding.flows.automation.runner.run_llm_visual_search", side_effect=always_fail):
+        with patch("notepad_grounding.automate.run_locate", side_effect=always_fail):
             client = FakeVisionClient()
-            reviewer = FakeReviewClient()
+            desktop_reviewer = FakeDesktopReviewer()
             result = run_automation(
                 query="Notepad",
                 client=client,
-                reviewer=reviewer,
+                desktop_reviewer=desktop_reviewer,
+                target_reviewer=object(),
+                bbox_reviewer=object(),
                 output_root=tmp_path,
                 timestamp="test",
                 max_retries=2,

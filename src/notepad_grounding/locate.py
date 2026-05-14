@@ -9,30 +9,31 @@ from pathlib import Path
 
 from PIL import Image
 
-from notepad_grounding.shared.click_points import ClickGridCell
-from notepad_grounding.shared.click_points import build_click_grid_cells
-from notepad_grounding.shared.click_points import crop_around_point
-from notepad_grounding.shared.click_points import draw_click_grid
-from notepad_grounding.shared.click_points import draw_full_click_marker
-from notepad_grounding.shared.click_points import offset_point
-from notepad_grounding.shared.click_points import grid_cell_by_id
-from notepad_grounding.shared.geometry import Box
-from notepad_grounding.shared.geometry import build_grid_cells
-from notepad_grounding.shared.geometry import clamp_box
-from notepad_grounding.shared.geometry import expand_box
-from notepad_grounding.shared.grid_judge import GridJudgeClient
-from notepad_grounding.shared.images import crop_box
-from notepad_grounding.shared.images import draw_box
-from notepad_grounding.shared.images import draw_grid_cells
-from notepad_grounding.shared.llm import VisionClient
+from notepad_grounding.click_grid import ClickGridCell
+from notepad_grounding.click_grid import build_click_grid_cells
+from notepad_grounding.click_grid import crop_around_point
+from notepad_grounding.click_grid import draw_click_grid
+from notepad_grounding.click_grid import draw_full_click_marker
+from notepad_grounding.click_grid import offset_point
+from notepad_grounding.click_grid import grid_cell_by_id
+from notepad_grounding.geometry import Box
+from notepad_grounding.geometry import build_grid_cells
+from notepad_grounding.geometry import clamp_box
+from notepad_grounding.geometry import expand_box
+from notepad_grounding.reviewers import BboxReviewer
+from notepad_grounding.reviewers import TargetReviewer
+from notepad_grounding.images import crop_box
+from notepad_grounding.images import draw_box
+from notepad_grounding.images import draw_grid_cells
+from notepad_grounding.vision import VisionClient
 
 
 @dataclass(frozen=True)
-class GridJudgeAttempt:
+class TargetReviewAttempt:
     attempt_index: int
     selected_cell_id: str
     selected_box: Box
-    judged_crop_box: Box
+    reviewed_crop_box: Box
     crop_image: str
     contains_target: bool
     confidence: float
@@ -49,7 +50,7 @@ class VisualSearchStep:
     confidence: float
     rationale: str
     grid_image: str
-    judge_attempts: list[GridJudgeAttempt]
+    review_attempts: list[TargetReviewAttempt]
 
 
 @dataclass(frozen=True)
@@ -97,7 +98,7 @@ class VisualSearchResult:
     elapsed_seconds: float
 
 
-def run_llm_visual_search(
+def run_locate(
     image: Image.Image,
     *,
     query: str,
@@ -107,11 +108,11 @@ def run_llm_visual_search(
     rounds: int = 3,
     first_grid: tuple[int, int] = (3, 4),
     later_grid: tuple[int, int] = (3, 3),
-    final_grid: tuple[int, int] = (5, 5),
     crop_padding: int = 40,
     final_crop_max_size: tuple[int, int] = (450, 350),
-    judge: GridJudgeClient | None = None,
-    max_judge_retries: int = 2,
+    target_reviewer: TargetReviewer | None = None,
+    bbox_reviewer: BboxReviewer | None = None,
+    max_review_retries: int = 2,
     final_precision: str = "marked-point",
     bbox_fallback: bool = True,
 ) -> VisualSearchResult:
@@ -149,45 +150,45 @@ def run_llm_visual_search(
             cell_ids=[cell.id for cell in local_cells],
         )
 
-        judge_attempts: list[GridJudgeAttempt] = []
+        review_attempts: list[TargetReviewAttempt] = []
         rejected_cell_ids: list[str] = []
         selected_local = _cell_by_id(local_cells, choice.cell_id)
         selected_box = _offset_box(selected_local.box, offset_x=current_box[0], offset_y=current_box[1])
 
-        if judge is not None:
-            for attempt_index in range(1, max_judge_retries + 2):
+        if target_reviewer is not None:
+            for attempt_index in range(1, max_review_retries + 2):
                 selected_local = _cell_by_id(local_cells, choice.cell_id)
                 selected_box = _offset_box(selected_local.box, offset_x=current_box[0], offset_y=current_box[1])
-                judged_crop_box = expand_box(selected_box, padding=crop_padding, bounds=bounds)
-                judged_crop = crop_box(image, judged_crop_box)
-                judge_crop_path = output_dir / f"{round_index:02d}-judge-crop-attempt-{attempt_index}.png"
-                judged_crop.save(judge_crop_path)
+                reviewed_crop_box = expand_box(selected_box, padding=crop_padding, bounds=bounds)
+                reviewed_crop = crop_box(image, reviewed_crop_box)
+                review_crop_path = output_dir / f"{round_index:02d}-target-review-crop-attempt-{attempt_index}.png"
+                reviewed_crop.save(review_crop_path)
 
-                judge_result = judge.judge_crop(query=query, image=judged_crop)
-                judge_result_path = output_dir / f"{round_index:02d}-judge-result-attempt-{attempt_index}.json"
-                attempt = GridJudgeAttempt(
+                review_result = target_reviewer.review_target_crop(query=query, image=reviewed_crop)
+                review_result_path = output_dir / f"{round_index:02d}-target-review-result-attempt-{attempt_index}.json"
+                attempt = TargetReviewAttempt(
                     attempt_index=attempt_index,
                     selected_cell_id=choice.cell_id,
                     selected_box=selected_box,
-                    judged_crop_box=judged_crop_box,
-                    crop_image=str(judge_crop_path),
-                    contains_target=judge_result.contains_target,
-                    confidence=judge_result.confidence,
-                    rationale=judge_result.rationale,
-                    visible_evidence=judge_result.visible_evidence,
+                    reviewed_crop_box=reviewed_crop_box,
+                    crop_image=str(review_crop_path),
+                    contains_target=review_result.contains_target,
+                    confidence=review_result.confidence,
+                    rationale=review_result.rationale,
+                    visible_evidence=review_result.visible_evidence,
                 )
-                judge_result_path.write_text(json.dumps(asdict(attempt), indent=2), encoding="utf-8")
-                judge_attempts.append(attempt)
+                review_result_path.write_text(json.dumps(asdict(attempt), indent=2), encoding="utf-8")
+                review_attempts.append(attempt)
 
-                if judge_result.contains_target:
+                if review_result.contains_target:
                     break
 
                 rejected_cell_ids.append(choice.cell_id)
-                if attempt_index > max_judge_retries:
+                if attempt_index > max_review_retries:
                     raise ValueError(
-                        "Grid judge rejected all attempts "
+                        "Target reviewer rejected all attempts "
                         f"for round {round_index}; rejected={rejected_cell_ids}; "
-                        f"last_rationale={judge_result.rationale}"
+                        f"last_rationale={review_result.rationale}"
                     )
 
                 choice = client.revise_cell_choice(
@@ -195,7 +196,7 @@ def run_llm_visual_search(
                     image=Image.open(grid_path).convert("RGB"),
                     cell_ids=[cell.id for cell in local_cells],
                     rejected_cell_ids=rejected_cell_ids,
-                    judge_rationale=judge_result.rationale,
+                    reviewer_rationale=review_result.rationale,
                     previous_response_id=choice.response_id,
                 )
 
@@ -216,7 +217,7 @@ def run_llm_visual_search(
                 confidence=choice.confidence,
                 rationale=choice.rationale,
                 grid_image=str(selected_grid_path),
-                judge_attempts=judge_attempts,
+                review_attempts=review_attempts,
             )
         )
         current_box = expand_box(selected_box, padding=crop_padding, bounds=bounds)
@@ -236,7 +237,7 @@ def run_llm_visual_search(
                 final_crop,
                 query=query,
                 client=client,
-                judge=judge,
+                target_reviewer=target_reviewer,
                 output_dir=output_dir,
                 crop_box=current_box,
                 screen_image=image,
@@ -255,7 +256,7 @@ def run_llm_visual_search(
             center, final_box, final_detection = _run_bbox_precision(
                 final_crop,
                 query=query,
-                client=client,
+                bbox_reviewer=bbox_reviewer,
                 output_dir=output_dir,
                 crop_box=current_box,
                 screen_image=image,
@@ -267,7 +268,7 @@ def run_llm_visual_search(
         center, final_box, final_detection = _run_bbox_precision(
             final_crop,
             query=query,
-            client=client,
+            bbox_reviewer=bbox_reviewer,
             output_dir=output_dir,
             crop_box=current_box,
             screen_image=image,
@@ -318,7 +319,7 @@ def _run_marked_point_precision(
     *,
     query: str,
     client: VisionClient,
-    judge: GridJudgeClient | None,
+    target_reviewer: TargetReviewer | None,
     output_dir: Path,
     crop_box: Box,
     screen_image: Image.Image,
@@ -326,11 +327,11 @@ def _run_marked_point_precision(
 ) -> FinalClickPointStep:
     coarse_cells = build_click_grid_cells(final_crop.size, rows=7, cols=7)
     first_overlay_path = output_dir / "click-points-01.png"
-    first_choice, coarse_cell = _choose_judged_click_grid_cell(
+    first_choice, coarse_cell = _choose_reviewed_click_grid_cell(
         final_crop,
         query=query,
         client=client,
-        judge=judge,
+        target_reviewer=target_reviewer,
         cells=coarse_cells,
         overlay_path=first_overlay_path,
         output_dir=output_dir,
@@ -359,11 +360,11 @@ def _run_marked_point_precision(
 
     fine_cells = build_click_grid_cells(refinement_crop.size, rows=5, cols=5)
     second_overlay_path = output_dir / "click-points-02.png"
-    second_choice, fine_cell = _choose_judged_click_grid_cell(
+    second_choice, fine_cell = _choose_reviewed_click_grid_cell(
         refinement_crop,
         query=query,
         client=client,
-        judge=judge,
+        target_reviewer=target_reviewer,
         cells=fine_cells,
         overlay_path=second_overlay_path,
         output_dir=output_dir,
@@ -435,12 +436,12 @@ def _run_marked_point_precision(
     return result
 
 
-def _choose_judged_click_grid_cell(
+def _choose_reviewed_click_grid_cell(
     image: Image.Image,
     *,
     query: str,
     client: VisionClient,
-    judge: GridJudgeClient | None,
+    target_reviewer: TargetReviewer | None,
     cells: list[ClickGridCell],
     overlay_path: Path,
     output_dir: Path,
@@ -464,41 +465,41 @@ def _choose_judged_click_grid_cell(
         cell = grid_cell_by_id(cells, choice.cell_id)
         draw_click_grid(image, cells, output_path=overlay_path, selected_cell_id=choice.cell_id)
 
-        if judge is None:
+        if target_reviewer is None:
             return choice, cell
 
-        judged_crop_box = expand_box(cell.box, padding=12, bounds=(0, 0, image.width, image.height))
-        judged_crop = image.crop(judged_crop_box)
-        judge_crop_path = output_dir / f"{artifact_prefix}-judge-crop-attempt-{attempt_index}.png"
-        judged_crop.save(judge_crop_path)
-        judge_result = judge.judge_crop(query=query, image=judged_crop)
-        judge_result_path = output_dir / f"{artifact_prefix}-judge-result-attempt-{attempt_index}.json"
-        judge_result_path.write_text(
+        reviewed_crop_box = expand_box(cell.box, padding=12, bounds=(0, 0, image.width, image.height))
+        reviewed_crop = image.crop(reviewed_crop_box)
+        review_crop_path = output_dir / f"{artifact_prefix}-target-review-crop-attempt-{attempt_index}.png"
+        reviewed_crop.save(review_crop_path)
+        review_result = target_reviewer.review_target_crop(query=query, image=reviewed_crop)
+        review_result_path = output_dir / f"{artifact_prefix}-target-review-result-attempt-{attempt_index}.json"
+        review_result_path.write_text(
             json.dumps(
                 {
                     "attempt_index": attempt_index,
                     "selected_cell_id": choice.cell_id,
                     "cell_box": cell.box,
-                    "judged_crop_box": judged_crop_box,
-                    "crop_image": str(judge_crop_path),
-                    "contains_target": judge_result.contains_target,
-                    "confidence": judge_result.confidence,
-                    "rationale": judge_result.rationale,
-                    "visible_evidence": judge_result.visible_evidence,
+                    "reviewed_crop_box": reviewed_crop_box,
+                    "crop_image": str(review_crop_path),
+                    "contains_target": review_result.contains_target,
+                    "confidence": review_result.confidence,
+                    "rationale": review_result.rationale,
+                    "visible_evidence": review_result.visible_evidence,
                     "response_id": choice.response_id,
                 },
                 indent=2,
             ),
             encoding="utf-8",
         )
-        if judge_result.contains_target:
+        if review_result.contains_target:
             return choice, cell
 
         rejected_cell_ids.append(choice.cell_id)
-        last_rationale = judge_result.rationale
+        last_rationale = review_result.rationale
 
     raise ValueError(
-        f"Click grid judge rejected all attempts for {artifact_prefix}; "
+        f"Click grid target reviewer rejected all attempts for {artifact_prefix}; "
         f"rejected={rejected_cell_ids}; last_rationale={last_rationale}"
     )
 
@@ -507,14 +508,16 @@ def _run_bbox_precision(
     final_crop: Image.Image,
     *,
     query: str,
-    client: VisionClient,
+    bbox_reviewer: BboxReviewer | None,
     output_dir: Path,
     crop_box: Box,
     screen_image: Image.Image,
     bounds: Box,
     final_crop_path: Path,
 ) -> tuple[tuple[int, int], Box, FinalDetectionStep]:
-    detection = client.locate_icon_with_validation(query=query, image=final_crop, debug_dir=output_dir)
+    if bbox_reviewer is None:
+        raise ValueError("bbox_reviewer is required for bbox precision")
+    detection = bbox_reviewer.review_bbox(query=query, image=final_crop, debug_dir=output_dir)
     if not detection.target_visible:
         raise ValueError(f"LLM reported target not visible in final crop: {detection.rationale}")
 
@@ -541,16 +544,6 @@ def _run_bbox_precision(
 
 def _point_box(point: tuple[int, int], *, bounds: Box) -> Box:
     return clamp_box((point[0] - 3, point[1] - 3, point[0] + 3, point[1] + 3), bounds)
-
-
-def _union_boxes(boxes: list[Box]) -> Box:
-    if not boxes:
-        raise ValueError("Cannot compute union of empty box list")
-    x1 = min(b[0] for b in boxes)
-    y1 = min(b[1] for b in boxes)
-    x2 = max(b[2] for b in boxes)
-    y2 = max(b[3] for b in boxes)
-    return (x1, y1, x2, y2)
 
 
 def _crop_is_small_enough(box: Box, *, max_size: tuple[int, int]) -> bool:

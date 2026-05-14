@@ -1,23 +1,48 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from pydantic import BaseModel
 from pydantic import Field
 
 
-class CellChoiceModel(BaseModel):
-    """Structured output for single grid cell selection."""
+@dataclass(frozen=True)
+class CellChoice:
+    cell_id: str
+    confidence: float
+    rationale: str
+    response_id: str | None = None
 
-    cell_id: str = Field(..., description="The ID of the selected grid cell")
-    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence 0-1")
-    rationale: str = Field(..., description="Why this cell was chosen")
+
+@dataclass(frozen=True)
+class ClickGridChoice:
+    cell_id: str
+    confidence: float
+    rationale: str
+    response_id: str | None = None
 
 
-class CellsChoiceModel(BaseModel):
-    """Structured output for multiple grid cell selection."""
+@dataclass(frozen=True)
+class IconDetection:
+    target_visible: bool
+    icon_bbox: tuple[int, int, int, int]
+    confidence: float
+    rationale: str
 
-    cell_ids: list[str] = Field(..., description="All cell IDs containing the icon")
-    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence 0-1")
-    rationale: str = Field(..., description="Why these cells were chosen")
+
+@dataclass(frozen=True)
+class TargetReviewResult:
+    contains_target: bool
+    confidence: float
+    rationale: str
+    visible_evidence: str = ""
+
+
+@dataclass(frozen=True)
+class DesktopReviewResult:
+    status: str
+    action_needed: str
+    rationale: str
 
 
 class ReviewResultModel(BaseModel):
@@ -34,7 +59,7 @@ class ReviewResultModel(BaseModel):
     rationale: str = Field(..., description="Explanation of the current state")
 
 
-class GridJudgeResultModel(BaseModel):
+class TargetReviewResultModel(BaseModel):
     """Structured output for validating a selected grid crop."""
 
     contains_target: bool = Field(

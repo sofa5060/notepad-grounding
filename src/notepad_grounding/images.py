@@ -7,8 +7,8 @@ from typing import Iterable
 
 from PIL import Image, ImageDraw, ImageFont
 
-from notepad_grounding.shared.geometry import Box
-from notepad_grounding.shared.geometry import GridCell
+from notepad_grounding.geometry import Box
+from notepad_grounding.geometry import GridCell
 
 
 def image_to_data_url(image: Image.Image) -> str:

@@ -1,7 +1,7 @@
 # Vision-Based Desktop Automation — Submission Document
 
 **Project:** Notepad Grounding  
-**Command:** `uv run notepad-grounding locate --query Notepad --out-dir output`  
+**Command:** `uv run notepad-grounding`  
 **Platform:** Windows 11, 1920×1080, 100% scale  
 **Repository:** https://github.com/sofa5060/notepad-grounding
 
@@ -24,7 +24,7 @@ LLM vision was chosen because it generalizes to arbitrary icons, positions, and 
 
 ---
 
-## Stage 1: Coarse-to-Fine Grid Search (Grid Search + Judge)
+## Stage 1: Coarse-to-Fine Grid Search (Grid Search + Reviewer)
 
 The system divides the screen into a labeled grid and asks the LLM which cell contains the target.
 
@@ -32,10 +32,10 @@ The system divides the screen into a labeled grid and asks the LLM which cell co
 **Round 2:** Crop around the selected cell, draw a 3×3 grid. The LLM picks again from 9 options.  
 **Round 3:** Crop further, draw a 5×5 grid. The LLM picks from 25 options.
 
-After each selection, a **grid judge** crops the selected cell with padding and asks a second vision call: *"Does this crop actually contain the target icon or label?"*
+After each selection, a **target crop reviewer** crops the selected cell with padding and asks a second vision call: *"Does this crop actually contain the target icon or label?"*
 
-- If the judge says **yes** → continue to next round
-- If the judge says **no** → the chooser is corrected in the same conversation (using `previous_response_id`) and must pick a different cell
+- If the reviewer says **yes** → continue to next round
+- If the reviewer says **no** → the chooser is corrected in the same conversation (using `previous_response_id`) and must pick a different cell
 
 This prevents the cascading failure where one wrong cell selection ruins all subsequent crops.
 
@@ -49,13 +49,13 @@ Once the crop is small enough (~450×350 px), the system switches to a **labeled
 - Draw a 7×7 yellow grid over the final crop
 - Row numbers are drawn on the left, column numbers above the image — both outside the screenshot content
 - The LLM picks a cell using row/column format like `R3C4`
-- A judge validates the selected cell crop before accepting it
+- A reviewer validates the selected cell crop before accepting it
 
 **Step 2 — Fine grid:**
 - Crop a small region around the accepted coarse cell
 - Draw a finer 5×5 row/column grid on this smaller crop
 - The LLM picks the final cell (e.g., `R2C3`)
-- The judge validates again
+- The reviewer validates again
 
 **Step 3 — Center calculation:**
 - Code maps the final cell's center back to screen coordinates deterministically
@@ -66,7 +66,7 @@ Once the crop is small enough (~450×350 px), the system switches to a **labeled
 
 ## Stage 2 Fallback: Bbox Precision
 
-If the marked-point grid method fails (e.g., judge rejects all attempts), the system falls back to **bbox refinement**:
+If the click-grid method fails (e.g., reviewer rejects all attempts), the system falls back to **bbox refinement**:
 
 1. The LLM draws a tight bounding box around the icon graphic (not the text label)
 2. The system draws the red box on the crop and sends it back to the LLM
@@ -141,4 +141,4 @@ The system successfully locates desktop icons across:
 - **Busy/cluttered backgrounds** (much harder than solid colors)
 - **With recovery mechanisms** for wrong clicks, pop-ups, and API failures
 
-All coordinate math is deterministic. The LLM only makes visual choices (labeled grid cells and row/column cell IDs). Code handles all screen-to-click transformations. The marked click-grid approach with judge validation provides precise, explainable localization without requiring raw pixel coordinates from the LLM.
+All coordinate math is deterministic. The LLM only makes visual choices (labeled grid cells and row/column cell IDs). Code handles all screen-to-click transformations. The marked click-grid approach with reviewer validation provides precise, explainable localization without requiring raw pixel coordinates from the LLM.

@@ -1,7 +1,7 @@
-from notepad_grounding.flows.grid_ocr.grounding import build_grid
-from notepad_grounding.flows.grid_ocr.grounding import infer_candidates
-from notepad_grounding.flows.grid_ocr.grounding import locate_from_lines
-from notepad_grounding.flows.grid_ocr.ocr import OcrLine
+from grid_ocr.grounding import build_grid
+from grid_ocr.grounding import infer_candidates
+from grid_ocr.grounding import locate_from_lines
+from grid_ocr.ocr import OcrLine
 
 
 def test_build_grid_covers_screen_above_taskbar():

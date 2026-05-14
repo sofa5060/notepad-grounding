@@ -1,14 +1,14 @@
 from PIL import Image
 
-from notepad_grounding.flows.grid_ocr.ocr import OcrLine
-from notepad_grounding.flows.grid_ocr.ocr import OcrWord
-from notepad_grounding.flows.grid_ocr.ocr import dedupe_ocr_words
-from notepad_grounding.flows.grid_ocr.ocr import extract_ocr_lines_from_grid
-from notepad_grounding.flows.grid_ocr.ocr import group_words_by_line
-from notepad_grounding.flows.grid_ocr.ocr import iter_ocr_tiles
-from notepad_grounding.flows.grid_ocr.ocr import offset_and_scale_words
-from notepad_grounding.flows.grid_ocr.ocr import prepare_ocr_image
-from notepad_grounding.flows.grid_ocr.ocr import scale_ocr_lines
+from grid_ocr.ocr import OcrLine
+from grid_ocr.ocr import OcrWord
+from grid_ocr.ocr import dedupe_ocr_words
+from grid_ocr.ocr import extract_ocr_lines_from_grid
+from grid_ocr.ocr import group_words_by_line
+from grid_ocr.ocr import iter_ocr_tiles
+from grid_ocr.ocr import offset_and_scale_words
+from grid_ocr.ocr import prepare_ocr_image
+from grid_ocr.ocr import scale_ocr_lines
 
 
 def test_group_words_by_line_merges_wrapped_vertical_icon_label():

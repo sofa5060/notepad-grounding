@@ -1,11 +1,9 @@
-import pytest
-
-from notepad_grounding.shared.reviewer import OpenAIReviewClient
-from notepad_grounding.shared.reviewer import ReviewResult
+from notepad_grounding.models import DesktopReviewResult
+from notepad_grounding.reviewers import OpenAIDesktopReviewer
 
 
 def test_review_result_model_validates():
-    from notepad_grounding.shared.schemas import ReviewResultModel
+    from notepad_grounding.models import ReviewResultModel
 
     model = ReviewResultModel(
         status="success",
@@ -17,7 +15,7 @@ def test_review_result_model_validates():
 
 
 def test_review_result_model_rejects_invalid_status_type():
-    from notepad_grounding.shared.schemas import ReviewResultModel
+    from notepad_grounding.models import ReviewResultModel
 
     # Pydantic coerces types, so this should still work
     model = ReviewResultModel(
@@ -26,3 +24,14 @@ def test_review_result_model_rejects_invalid_status_type():
         rationale="Steam opened",
     )
     assert model.status == "wrong_app"
+
+
+def test_desktop_review_result_shape():
+    result = DesktopReviewResult(
+        status="success",
+        action_needed="proceed",
+        rationale="Notepad is open",
+    )
+
+    assert result.status == "success"
+    assert OpenAIDesktopReviewer.__name__ == "OpenAIDesktopReviewer"

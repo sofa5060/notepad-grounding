@@ -9,30 +9,28 @@ from pathlib import Path
 
 from PIL import Image
 
-from notepad_grounding.flows.llm_visual_search.flow import run_llm_visual_search
-from notepad_grounding.shared.api import ApiError
-from notepad_grounding.shared.api import fetch_posts
-from notepad_grounding.shared.automation import clear_target_directory
-from notepad_grounding.shared.automation import click_at
-from notepad_grounding.shared.automation import close_active_window
-from notepad_grounding.shared.automation import close_window_hard
-from notepad_grounding.shared.automation import double_click
-from notepad_grounding.shared.automation import ensure_directory
-from notepad_grounding.shared.automation import get_active_window_title
-from notepad_grounding.shared.automation import get_target_directory
-from notepad_grounding.shared.automation import is_window_active
-from notepad_grounding.shared.automation import press_hotkey
-from notepad_grounding.shared.automation import sleep
-from notepad_grounding.shared.automation import type_text
-from notepad_grounding.shared.automation import wait_for_window
-from notepad_grounding.shared.automation import wait_for_window_close
-from notepad_grounding.shared.capture import capture_desktop
-from notepad_grounding.shared.grid_judge import GridJudgeClient
-from notepad_grounding.shared.llm import OpenAIVisionClient
-from notepad_grounding.shared.llm import VisionClient
-from notepad_grounding.shared.reviewer import OpenAIReviewClient
-from notepad_grounding.shared.reviewer import ReviewClient
-from notepad_grounding.shared.reviewer import ReviewResult
+from notepad_grounding.locate import run_locate
+from notepad_grounding.api import fetch_posts
+from notepad_grounding.desktop import clear_target_directory
+from notepad_grounding.desktop import close_active_window
+from notepad_grounding.desktop import close_window_hard
+from notepad_grounding.desktop import double_click
+from notepad_grounding.desktop import ensure_directory
+from notepad_grounding.desktop import get_active_window_title
+from notepad_grounding.desktop import get_target_directory
+from notepad_grounding.desktop import is_window_active
+from notepad_grounding.desktop import press_hotkey
+from notepad_grounding.desktop import sleep
+from notepad_grounding.desktop import type_text
+from notepad_grounding.capture import capture_desktop
+from notepad_grounding.models import DesktopReviewResult
+from notepad_grounding.reviewers import BboxReviewer
+from notepad_grounding.reviewers import DesktopReviewer
+from notepad_grounding.reviewers import OpenAIBboxReviewer
+from notepad_grounding.reviewers import OpenAIDesktopReviewer
+from notepad_grounding.reviewers import OpenAITargetReviewer
+from notepad_grounding.reviewers import TargetReviewer
+from notepad_grounding.vision import VisionClient
 
 logger = logging.getLogger(__name__)
 
@@ -57,14 +55,14 @@ class PostResult:
 
 
 def _review_and_recover(
-    reviewer: ReviewClient,
+    desktop_reviewer: DesktopReviewer,
     action: str,
     expected: str,
     image: Image.Image,
-) -> ReviewResult:
+) -> DesktopReviewResult:
     """Ask the reviewer to check the screen state and return its verdict."""
     logger.info("[REVIEW] %s | Expected: %s", action, expected)
-    result = reviewer.review_state(action=action, expected=expected, image=image)
+    result = desktop_reviewer.review_desktop_state(action=action, expected=expected, image=image)
     logger.info("[REVIEW] status=%s action_needed=%s rationale=%s", result.status, result.action_needed, result.rationale)
     return result
 
@@ -107,15 +105,17 @@ def run_automation(
     retry_delay: float = 1.0,
     post_limit: int = 10,
     llm_rounds: int = 3,
-    reviewer: ReviewClient | None = None,
-    judge: GridJudgeClient | None = None,
+    desktop_reviewer: DesktopReviewer | None = None,
+    target_reviewer: TargetReviewer | None = None,
+    bbox_reviewer: BboxReviewer | None = None,
 ) -> AutomationResult:
     run_id = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
     output_dir = output_root / "automation" / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Use default reviewer if none provided
-    reviewer = reviewer or OpenAIReviewClient()
+    desktop_reviewer = desktop_reviewer or OpenAIDesktopReviewer()
+    target_reviewer = target_reviewer or OpenAITargetReviewer()
+    bbox_reviewer = bbox_reviewer or OpenAIBboxReviewer()
 
     logger.info("Starting automation for query=%r", query)
 
@@ -155,11 +155,12 @@ def run_automation(
                 # === STEP 1-2: Ground icon + click (timed) ===
                 ground_start = time.perf_counter()
                 image = capture_desktop()
-                result = run_llm_visual_search(
+                result = run_locate(
                     image,
                     query=query,
                     client=client,
-                    judge=judge,
+                    target_reviewer=target_reviewer,
+                    bbox_reviewer=bbox_reviewer,
                     output_root=output_dir / "locate",
                     rounds=llm_rounds,
                 )
@@ -174,7 +175,7 @@ def run_automation(
 
                 # === STEP 3: Review — did Notepad open? ===
                 review = _review_and_recover(
-                    reviewer,
+                    desktop_reviewer,
                     action=f"Double-clicked the '{query}' desktop icon at {center}",
                     expected="Notepad window is open and active",
                     image=capture_desktop(),
@@ -198,7 +199,7 @@ def run_automation(
 
                 # === STEP 5: Review — is text correct? ===
                 review = _review_and_recover(
-                    reviewer,
+                    desktop_reviewer,
                     action=f"Typed post content into Notepad",
                     expected="Notepad shows the typed post text",
                     image=capture_desktop(),
@@ -220,7 +221,7 @@ def run_automation(
                 # === STEP 7: Review — did save succeed? Handle pop-ups ===
                 for _ in range(3):  # up to 3 review cycles for pop-ups
                     review = _review_and_recover(
-                        reviewer,
+                        desktop_reviewer,
                         action=f"Pressed Save with path {full_path}",
                         expected="File is saved, no dialogs remain, Notepad is active",
                         image=capture_desktop(),
@@ -252,7 +253,7 @@ def run_automation(
 
                 # === STEP 9: Review — did Notepad close? ===
                 review = _review_and_recover(
-                    reviewer,
+                    desktop_reviewer,
                     action="Closed Notepad",
                     expected="Notepad is closed, desktop is visible",
                     image=capture_desktop(),

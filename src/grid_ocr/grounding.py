@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Iterable
 
-from notepad_grounding.flows.grid_ocr.ocr import Box
-from notepad_grounding.flows.grid_ocr.ocr import OcrLine
+from grid_ocr.ocr import Box
+from grid_ocr.ocr import OcrLine
 
 
 @dataclass(frozen=True)

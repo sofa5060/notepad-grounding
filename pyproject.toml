@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-notepad-grounding = "notepad_grounding.main:main"
+notepad-grounding = "notepad_grounding.cli:main"
 
 [dependency-groups]
 dev = [

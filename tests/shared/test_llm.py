@@ -1,20 +1,16 @@
 import pytest
 from PIL import Image
 
-from notepad_grounding.shared.llm import CellChoice
-from notepad_grounding.shared.llm import ClickGridChoice
-from notepad_grounding.shared.llm import ClickPointChoice
-from notepad_grounding.shared.llm import CellsChoice
-from notepad_grounding.shared.llm import IconDetection
-from notepad_grounding.shared.llm import OpenAIVisionClient
-from notepad_grounding.shared.llm import parse_click_point_choice
-from notepad_grounding.shared.llm import parse_click_grid_choice
-from notepad_grounding.shared.llm import parse_cell_choice
-from notepad_grounding.shared.llm import parse_cells_choice
-from notepad_grounding.shared.llm import parse_icon_detection
-from notepad_grounding.shared.llm import resolve_openai_model
-from notepad_grounding.shared.llm import build_bbox_initial_prompt
-from notepad_grounding.shared.llm import build_bbox_validation_prompt
+from notepad_grounding.models import CellChoice
+from notepad_grounding.models import ClickGridChoice
+from notepad_grounding.models import IconDetection
+from notepad_grounding.prompts import build_bbox_initial_prompt
+from notepad_grounding.prompts import build_bbox_validation_prompt
+from notepad_grounding.reviewers import OpenAIBboxReviewer
+from notepad_grounding.vision import parse_click_grid_choice
+from notepad_grounding.vision import parse_cell_choice
+from notepad_grounding.vision import parse_icon_detection
+from notepad_grounding.vision import resolve_openai_model
 
 
 def test_parse_cell_choice_accepts_valid_json():
@@ -46,34 +42,6 @@ def test_resolve_openai_model_prefers_explicit_argument(monkeypatch):
     assert resolve_openai_model("explicit-model") == "explicit-model"
 
 
-def test_parse_cells_choice_accepts_valid_json():
-    choice = parse_cells_choice(
-        '{"cell_ids": ["F-2-2", "F-2-3"], "confidence": 0.9, "rationale": "icon spans two cells"}',
-        valid_cell_ids=["F-1-1", "F-2-2", "F-2-3"],
-    )
-
-    assert choice == CellsChoice(
-        cell_ids=["F-2-2", "F-2-3"],
-        confidence=0.9,
-        rationale="icon spans two cells",
-    )
-
-
-def test_parse_cells_choice_deduplicates_and_rejects_invalid():
-    choice = parse_cells_choice(
-        '{"cell_ids": ["F-2-2", "F-2-2", "F-2-3"], "confidence": 0.9, "rationale": "test"}',
-        valid_cell_ids=["F-1-1", "F-2-2", "F-2-3"],
-    )
-
-    assert choice.cell_ids == ["F-2-2", "F-2-3"]
-
-    with pytest.raises(ValueError):
-        parse_cells_choice(
-            '{"cell_ids": ["F-2-2", "bad"], "confidence": 0.9, "rationale": "test"}',
-            valid_cell_ids=["F-1-1", "F-2-2", "F-2-3"],
-        )
-
-
 def test_parse_icon_detection_clamps_crop_local_bbox():
     detection = parse_icon_detection(
         '{"target_visible": true, "icon_bbox": [-5, 10, 55, 70], "confidence": 0.9, "rationale": "icon"}',
@@ -86,23 +54,6 @@ def test_parse_icon_detection_clamps_crop_local_bbox():
         confidence=0.9,
         rationale="icon",
     )
-
-
-def test_parse_click_point_choice_accepts_valid_json_and_clamps_confidence():
-    choice = parse_click_point_choice(
-        '{"point_id": "P05", "confidence": 1.7, "rationale": "center of icon"}',
-        valid_point_ids=["P01", "P05"],
-    )
-
-    assert choice == ClickPointChoice(point_id="P05", confidence=1.0, rationale="center of icon")
-
-
-def test_parse_click_point_choice_rejects_invalid_point_id():
-    with pytest.raises(ValueError):
-        parse_click_point_choice(
-            '{"point_id": "P99", "confidence": 0.8, "rationale": "bad"}',
-            valid_point_ids=["P01", "P02"],
-        )
 
 
 def test_parse_click_grid_choice_accepts_valid_json_and_clamps_confidence():
@@ -153,7 +104,7 @@ class FakeOpenAIClient:
         self.responses = FakeResponses(responses)
 
 
-def test_locate_icon_with_validation_saves_bbox_debug_outputs(tmp_path):
+def test_bbox_reviewer_saves_debug_outputs(tmp_path):
     fake_client = FakeOpenAIClient(
         [
             FakeOpenAIResponse(
@@ -170,11 +121,11 @@ def test_locate_icon_with_validation_saves_bbox_debug_outputs(tmp_path):
             ),
         ]
     )
-    client = OpenAIVisionClient.__new__(OpenAIVisionClient)
-    client._client = fake_client
-    client._model = "test-model"
+    reviewer = OpenAIBboxReviewer.__new__(OpenAIBboxReviewer)
+    reviewer._client = fake_client
+    reviewer._model = "test-model"
 
-    detection = client.locate_icon_with_validation(
+    detection = reviewer.review_bbox(
         query="Notepad",
         image=Image.new("RGB", (100, 100), "white"),
         max_iterations=2,

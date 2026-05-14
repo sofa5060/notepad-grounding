@@ -1,4 +1,22 @@
-from notepad_grounding.main import build_parser
+import pytest
+
+from notepad_grounding.cli import build_parser
+
+
+def test_default_parser_runs_automation_with_notepad_query():
+    parser = build_parser()
+    args = parser.parse_args([])
+
+    assert args.command == "run"
+    assert args.query == "Notepad"
+
+
+def test_default_parser_accepts_query_override():
+    parser = build_parser()
+    args = parser.parse_args(["--query", "Calculator"])
+
+    assert args.command == "run"
+    assert args.query == "Calculator"
 
 
 def test_locate_parser_accepts_query_and_image():
@@ -10,9 +28,8 @@ def test_locate_parser_accepts_query_and_image():
     assert str(args.image) == "screen.png"
 
 
-def test_automate_parser_accepts_query():
+def test_automate_subcommand_is_removed():
     parser = build_parser()
-    args = parser.parse_args(["automate", "--query", "Notepad"])
 
-    assert args.command == "automate"
-    assert args.query == "Notepad"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["automate", "--query", "Notepad"])

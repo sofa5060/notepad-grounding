@@ -1,5 +1,5 @@
-from notepad_grounding.shared.geometry import build_grid_cells
-from notepad_grounding.shared.geometry import expand_box
+from notepad_grounding.geometry import build_grid_cells
+from notepad_grounding.geometry import expand_box
 
 
 def test_build_grid_cells_returns_labeled_cells_covering_box():
