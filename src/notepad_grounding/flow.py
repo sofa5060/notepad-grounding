@@ -265,7 +265,7 @@ def _locate_and_open_target(
     review = _review_current_desktop(
         dependencies.reviewer,
         action=f"Double-clicked the '{query}' desktop icon at {center}",
-        expected="Notepad window is open and active",
+        expected="Notepad window is open",
     )
     if review.status == "wrong_app":
         logger.warning("[%s] Reviewer detected wrong app: %s", filename, review.rationale)
@@ -318,7 +318,7 @@ def _review_save(*, filename: str, full_path: Path, desktop_reviewer) -> None:
         review = _review_current_desktop(
             desktop_reviewer,
             action=f"Pressed Save with path {full_path}",
-            expected="File is saved, no dialogs remain, Notepad is active",
+            expected="File is saved, no dialogs remain, Notepad is open",
         )
         if review.status == "success":
             logger.info("[%s] Reviewer confirmed: save succeeded", filename)

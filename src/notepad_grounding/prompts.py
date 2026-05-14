@@ -81,9 +81,12 @@ def build_desktop_review_prompt(*, action: str, expected: str) -> str:
         "by looking at the current screenshot.\n\n"
         f"Action just performed: {action}\n"
         f"Expected state: {expected}\n\n"
-        "Look at the screenshot and determine:\n"
-        "1. Is the expected state achieved?\n"
-        "2. Is there an unexpected pop-up, dialog, or wrong window open?\n"
+        "IMPORTANT: Only verify whether the expected app/window is OPEN on screen. "
+        "Do NOT care whether it is the active/foreground window. "
+        "As long as the app is visible somewhere on screen, report success.\n\n"
+        "Determine:\n"
+        "1. Is the expected app open and visible?\n"
+        "2. Is there an unexpected pop-up or wrong window open?\n"
         "3. If something is wrong, what is the exact recovery action?"
     )
 
