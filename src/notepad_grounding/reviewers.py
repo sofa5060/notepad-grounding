@@ -20,6 +20,7 @@ from notepad_grounding.models import TargetReviewResultModel
 from notepad_grounding.prompts import build_bbox_initial_prompt
 from notepad_grounding.prompts import build_bbox_validation_prompt
 from notepad_grounding.prompts import build_desktop_review_prompt
+from notepad_grounding.prompts import build_target_grid_review_prompt
 from notepad_grounding.prompts import build_target_review_prompt
 from notepad_grounding.vision import DEFAULT_OPENAI_MODEL
 
@@ -38,6 +39,20 @@ class OpenAIReviewer:
     def review_target_crop(self, *, query: str, image: Image.Image) -> TargetReviewResult:
         parsed: TargetReviewResultModel = self._ask_structured_reviewer(
             prompt=build_target_review_prompt(query=query),
+            image=image,
+            response_model=TargetReviewResultModel,
+        )
+
+        return TargetReviewResult(
+            contains_target=parsed.contains_target,
+            confidence=parsed.confidence,
+            rationale=parsed.rationale.strip(),
+            visible_evidence=parsed.visible_evidence.strip(),
+        )
+
+    def review_target_grid_cell(self, *, query: str, image: Image.Image) -> TargetReviewResult:
+        parsed: TargetReviewResultModel = self._ask_structured_reviewer(
+            prompt=build_target_grid_review_prompt(query=query),
             image=image,
             response_model=TargetReviewResultModel,
         )

@@ -102,6 +102,9 @@ class FakeTargetReviewer:
             visible_evidence="notepad visible" if contains_target else "notepad absent",
         )
 
+    def review_target_grid_cell(self, *, query, image):
+        return self.review_target_crop(query=query, image=image)
+
 
 def test_run_locate_maps_selected_cells_to_screen_coordinates(tmp_path):
     image = Image.new("RGB", (400, 300), "white")

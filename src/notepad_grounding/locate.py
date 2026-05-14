@@ -457,11 +457,10 @@ def _choose_reviewed_click_grid_cell(
         if target_reviewer is None:
             return choice, cell
 
-        reviewed_crop_box = expand_box(cell.box, padding=12, bounds=(0, 0, image.width, image.height))
-        reviewed_crop = image.crop(reviewed_crop_box)
+        grid_review_image = Image.open(overlay_path).convert("RGB")
         review_crop_path = output_dir / f"{artifact_prefix}-target-review-crop-attempt-{attempt_index}.png"
-        reviewed_crop.save(review_crop_path)
-        review_result = target_reviewer.review_target_crop(query=query, image=reviewed_crop)
+        grid_review_image.save(review_crop_path)
+        review_result = target_reviewer.review_target_grid_cell(query=query, image=grid_review_image)
         review_result_path = output_dir / f"{artifact_prefix}-target-review-result-attempt-{attempt_index}.json"
         review_result_path.write_text(
             json.dumps(
@@ -469,7 +468,6 @@ def _choose_reviewed_click_grid_cell(
                     "attempt_index": attempt_index,
                     "selected_cell_id": choice.cell_id,
                     "cell_box": cell.box,
-                    "reviewed_crop_box": reviewed_crop_box,
                     "crop_image": str(review_crop_path),
                     "contains_target": review_result.contains_target,
                     "confidence": review_result.confidence,

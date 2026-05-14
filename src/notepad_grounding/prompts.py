@@ -75,6 +75,22 @@ def build_target_review_prompt(*, query: str) -> str:
     )
 
 
+def build_target_grid_review_prompt(*, query: str) -> str:
+    return (
+        "You are a strict reviewer for a Windows desktop visual grounding system.\n\n"
+        f"Target query: {query!r}\n\n"
+        "The image shows a grid of labeled cells drawn over a screenshot crop. "
+        "Another model already selected one cell, which is HIGHLIGHTED with a thicker yellow outline. "
+        "Your job: decide whether the HIGHLIGHTED cell actually contains the requested desktop item. "
+        "Accept it if the highlighted cell contains either:\n"
+        "1. recognizable visual evidence of the requested app/icon/shortcut, or\n"
+        "2. visible label text matching the query.\n\n"
+        "Look at the OTHER cells too as context, but ONLY judge the highlighted one. "
+        "Reject if the target is not visible in the highlighted cell, "
+        "if it is in a DIFFERENT cell, or if the evidence is too ambiguous to continue safely."
+    )
+
+
 def build_desktop_review_prompt(*, action: str, expected: str) -> str:
     return (
         "You are a desktop automation reviewer. You validate whether an action succeeded "
