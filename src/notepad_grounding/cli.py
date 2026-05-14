@@ -5,7 +5,6 @@ import logging
 import sys
 from pathlib import Path
 
-from notepad_grounding.api import ApiError
 from notepad_grounding.flow import run_flow
 
 
@@ -59,9 +58,6 @@ def start_flow(args: argparse.Namespace) -> int:
 
         _print_automation_result(result)
         return 0
-    except ApiError as exc:
-        print(f"error: {exc}")
-        return 4
     except Exception as exc:
         print(f"error: {exc}")
         return 3

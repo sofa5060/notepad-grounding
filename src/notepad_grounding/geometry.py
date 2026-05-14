@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Iterable
 
 Box = tuple[int, int, int, int]
 
@@ -23,6 +24,7 @@ def build_grid_cells(
     rows: int,
     cols: int,
     prefix: str = "A",
+    id_fmt: str = "dash",
 ) -> list[GridCell]:
     if rows <= 0 or cols <= 0:
         raise ValueError("rows and cols must be positive")
@@ -31,21 +33,36 @@ def build_grid_cells(
     width = x2 - x1
     height = y2 - y1
     cells: list[GridCell] = []
-    for row in range(rows):
-        for col in range(cols):
-            cell_x1 = x1 + round(width * col / cols)
-            cell_y1 = y1 + round(height * row / rows)
-            cell_x2 = x1 + round(width * (col + 1) / cols)
-            cell_y2 = y1 + round(height * (row + 1) / rows)
+    for row in range(1, rows + 1):
+        for col in range(1, cols + 1):
+            cell_x1 = x1 + round(width * (col - 1) / cols)
+            cell_y1 = y1 + round(height * (row - 1) / rows)
+            cell_x2 = x1 + round(width * col / cols)
+            cell_y2 = y1 + round(height * row / rows)
+            if id_fmt == "rc":
+                cell_id = f"R{row}C{col}"
+            else:
+                cell_id = f"{prefix}{row}-{col}"
             cells.append(
                 GridCell(
-                    id=f"{prefix}{row + 1}-{col + 1}",
+                    id=cell_id,
                     row=row,
                     col=col,
                     box=(cell_x1, cell_y1, cell_x2, cell_y2),
                 )
             )
     return cells
+
+
+def cell_by_id(cells: Iterable[GridCell], cell_id: str) -> GridCell:
+    for cell in cells:
+        if cell.id == cell_id:
+            return cell
+    raise ValueError(f"Unknown cell: {cell_id}")
+
+
+def offset_point(point: tuple[int, int], *, offset: tuple[int, int]) -> tuple[int, int]:
+    return (point[0] + offset[0], point[1] + offset[1])
 
 
 def clamp_box(box: Box, bounds: Box) -> Box:

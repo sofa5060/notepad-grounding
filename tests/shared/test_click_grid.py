@@ -1,18 +1,20 @@
 from PIL import Image
 
-from notepad_grounding.click_grid import build_click_grid_cells
-from notepad_grounding.click_grid import crop_around_point
-from notepad_grounding.click_grid import draw_click_grid
-from notepad_grounding.click_grid import draw_full_click_marker
-from notepad_grounding.click_grid import grid_cell_by_id
-from notepad_grounding.click_grid import offset_point
+from notepad_grounding.geometry import build_grid_cells
+from notepad_grounding.geometry import cell_by_id
+from notepad_grounding.geometry import offset_point
+from notepad_grounding.images import crop_around_point
+from notepad_grounding.images import draw_click_grid
+from notepad_grounding.images import draw_full_click_marker
 
 
 def test_crop_around_point_and_offset_point_are_deterministic():
     image = Image.new("RGB", (200, 100), "white")
 
     crop, crop_box = crop_around_point(image, center=(190, 90), size=(60, 60))
-    selected = grid_cell_by_id(build_click_grid_cells(crop.size, rows=5, cols=5), "R3C3")
+    selected = cell_by_id(
+        build_grid_cells((0, 0, crop.width, crop.height), rows=5, cols=5, id_fmt="rc"), "R3C3"
+    )
 
     assert crop.size == (60, 60)
     assert crop_box == (140, 40, 200, 100)
@@ -20,7 +22,7 @@ def test_crop_around_point_and_offset_point_are_deterministic():
 
 
 def test_build_click_grid_cells_creates_row_column_ids_and_centers():
-    cells = build_click_grid_cells((70, 70), rows=7, cols=7)
+    cells = build_grid_cells((0, 0, 70, 70), rows=7, cols=7, id_fmt="rc")
 
     assert len(cells) == 49
     assert cells[0].id == "R1C1"
@@ -32,7 +34,7 @@ def test_build_click_grid_cells_creates_row_column_ids_and_centers():
 
 def test_draw_click_grid_places_labels_outside_image(tmp_path):
     image = Image.new("RGB", (70, 70), "white")
-    cells = build_click_grid_cells(image.size, rows=7, cols=7)
+    cells = build_grid_cells((0, 0, image.width, image.height), rows=7, cols=7, id_fmt="rc")
     output_path = tmp_path / "grid.png"
 
     draw_click_grid(image, cells, output_path=output_path, selected_cell_id="R4C4")
@@ -41,12 +43,12 @@ def test_draw_click_grid_places_labels_outside_image(tmp_path):
     rendered = Image.open(output_path)
     assert rendered.width > image.width
     assert rendered.height > image.height
-    assert grid_cell_by_id(cells, "R4C4").center == (35, 35)
+    assert cell_by_id(cells, "R4C4").center == (35, 35)
 
 
 def test_draw_click_grid_uses_red_lines_and_yellow_selected_cell(tmp_path):
     image = Image.new("RGB", (70, 70), "white")
-    cells = build_click_grid_cells(image.size, rows=7, cols=7)
+    cells = build_grid_cells((0, 0, image.width, image.height), rows=7, cols=7, id_fmt="rc")
     output_path = tmp_path / "grid.png"
 
     draw_click_grid(image, cells, output_path=output_path, selected_cell_id="R4C4")

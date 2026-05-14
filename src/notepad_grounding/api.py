@@ -4,9 +4,7 @@ import requests
 
 API_URL = "https://jsonplaceholder.typicode.com/posts"
 logger = logging.getLogger(__name__)
-class ApiError(RuntimeError):
-    """Raised when the JSONPlaceholder API call fails."""
-    
+
 # Fallback dummy data used when the API is unavailable.
 _DUMMY_POSTS: list[dict] = [
     {"id": 1, "title": "sunt aut facere repellat provident occaecati excepturi optio reprehenderit", "body": "quia et suscipit\nsuscipit recusandae consequuntur expedita et cum\nreprehenderit molestiae ut ut quas totam\nnostrum rerum est autem sunt rem eveniet architecto"},
@@ -22,20 +20,14 @@ _DUMMY_POSTS: list[dict] = [
 ]
 
 def fetch_posts(*, limit: int = 10) -> list[dict]:
-    """Fetch the first N posts from JSONPlaceholder.
-
-    If the API is unavailable, falls back to dummy data so the
-    automation can continue gracefully.
-
-    Returns a list of dicts with keys: id, title, body.
-    """
+    """Fetch posts from JSONPlaceholder, falling back to dummy data on failure."""
     try:
         response = requests.get(API_URL, timeout=30)
         response.raise_for_status()
         posts = response.json()
         if not isinstance(posts, list):
-            raise ApiError(f"Unexpected API response shape: {type(posts).__name__}")
+            raise Exception(f"Unexpected API response shape: {type(posts).__name__}")
         return posts[:limit]
-    except (requests.RequestException, ApiError) as exc:
+    except Exception as exc:
         logger.warning("API unavailable (%s). Using fallback dummy data.", exc)
         return _DUMMY_POSTS[:limit]

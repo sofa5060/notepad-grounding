@@ -9,19 +9,18 @@ from pathlib import Path
 
 from PIL import Image
 
-from notepad_grounding.click_grid import ClickGridCell
-from notepad_grounding.click_grid import build_click_grid_cells
-from notepad_grounding.click_grid import crop_around_point
-from notepad_grounding.click_grid import draw_click_grid
-from notepad_grounding.click_grid import draw_full_click_marker
-from notepad_grounding.click_grid import offset_point
-from notepad_grounding.click_grid import grid_cell_by_id
 from notepad_grounding.geometry import Box
+from notepad_grounding.geometry import GridCell
 from notepad_grounding.geometry import build_grid_cells
+from notepad_grounding.geometry import cell_by_id
 from notepad_grounding.geometry import clamp_box
 from notepad_grounding.geometry import expand_box
+from notepad_grounding.geometry import offset_point
+from notepad_grounding.images import crop_around_point
 from notepad_grounding.images import crop_box
 from notepad_grounding.images import draw_box
+from notepad_grounding.images import draw_click_grid
+from notepad_grounding.images import draw_full_click_marker
 from notepad_grounding.images import draw_grid_cells
 
 
@@ -149,12 +148,12 @@ def run_locate(
 
         review_attempts: list[TargetReviewAttempt] = []
         rejected_cell_ids: list[str] = []
-        selected_local = _cell_by_id(local_cells, choice.cell_id)
+        selected_local = cell_by_id(local_cells, choice.cell_id)
         selected_box = _offset_box(selected_local.box, offset_x=current_box[0], offset_y=current_box[1])
 
         if target_reviewer is not None:
             for attempt_index in range(1, max_review_retries + 2):
-                selected_local = _cell_by_id(local_cells, choice.cell_id)
+                selected_local = cell_by_id(local_cells, choice.cell_id)
                 selected_box = _offset_box(selected_local.box, offset_x=current_box[0], offset_y=current_box[1])
                 reviewed_crop_box = expand_box(selected_box, padding=crop_padding, bounds=bounds)
                 reviewed_crop = crop_box(image, reviewed_crop_box)
@@ -295,13 +294,6 @@ def run_locate(
     return result
 
 
-def _cell_by_id(cells, cell_id: str):
-    for cell in cells:
-        if cell.id == cell_id:
-            return cell
-    raise ValueError(f"Unknown selected cell: {cell_id}")
-
-
 def _offset_box(box: Box, *, offset_x: int, offset_y: int) -> Box:
     return (
         box[0] + offset_x,
@@ -322,7 +314,7 @@ def _run_marked_point_precision(
     screen_image: Image.Image,
     bounds: Box,
 ) -> FinalClickPointStep:
-    coarse_cells = build_click_grid_cells(final_crop.size, rows=7, cols=7)
+    coarse_cells = build_grid_cells((0, 0, final_crop.width, final_crop.height), rows=7, cols=7, id_fmt="rc")
     first_overlay_path = output_dir / "click-points-01.png"
     first_choice, coarse_cell = _choose_reviewed_click_grid_cell(
         final_crop,
@@ -355,7 +347,7 @@ def _run_marked_point_precision(
     refinement_crop_path = output_dir / "click-points-02-crop.png"
     refinement_crop.save(refinement_crop_path)
 
-    fine_cells = build_click_grid_cells(refinement_crop.size, rows=5, cols=5)
+    fine_cells = build_grid_cells((0, 0, refinement_crop.width, refinement_crop.height), rows=5, cols=5, id_fmt="rc")
     second_overlay_path = output_dir / "click-points-02.png"
     second_choice, fine_cell = _choose_reviewed_click_grid_cell(
         refinement_crop,
@@ -391,7 +383,7 @@ def _run_marked_point_precision(
     )
 
     final_image_path = output_dir / "click-point-final.png"
-    final_cell = ClickGridCell(
+    final_cell = GridCell(
         id="CLICK",
         row=1,
         col=1,
@@ -439,12 +431,12 @@ def _choose_reviewed_click_grid_cell(
     query: str,
     client,
     target_reviewer,
-    cells: list[ClickGridCell],
+    cells: list[GridCell],
     overlay_path: Path,
     output_dir: Path,
     artifact_prefix: str,
     max_attempts: int,
-) -> tuple[object, ClickGridCell]:
+) -> tuple[object, GridCell]:
     rejected_cell_ids: list[str] = []
     previous_response_id: str | None = None
     last_rationale = ""
@@ -459,7 +451,7 @@ def _choose_reviewed_click_grid_cell(
             previous_response_id=previous_response_id,
         )
         previous_response_id = choice.response_id
-        cell = grid_cell_by_id(cells, choice.cell_id)
+        cell = cell_by_id(cells, choice.cell_id)
         draw_click_grid(image, cells, output_path=overlay_path, selected_cell_id=choice.cell_id)
 
         if target_reviewer is None:

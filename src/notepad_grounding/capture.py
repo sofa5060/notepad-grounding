@@ -3,7 +3,7 @@ import mss
 from PIL import Image
 
 
-def capture_desktop(*, require_windows: bool = True, monitor_index: int = 1) -> Image.Image:
+def capture_desktop(*, monitor_index: int = 1) -> Image.Image:
     with mss.mss() as screen_capture:
         monitors = screen_capture.monitors
         if monitor_index >= len(monitors):
