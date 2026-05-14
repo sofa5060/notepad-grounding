@@ -38,15 +38,15 @@ def build_click_grid_prompt(*, query: str, cell_ids: list[str], rejected_cell_id
     if rejected_cell_ids:
         rejected_text = (
             f" Do NOT choose rejected cells: {', '.join(rejected_cell_ids)}. "
-            "A reviewer said those cells would miss the target."
+            "A reviewer inspected those cells and said they do not contain the target."
         )
     return (
         "You are helping a Windows desktop visual grounding system choose a click target. "
-        "The image has a yellow row/column grid drawn over a desktop screenshot crop. "
-        "Column numbers are above, row numbers are on the left. "
-        f"Pick the cell whose CENTER overlaps with the {query!r} icon graphic or label. "
-        "If we click that center, it should open the app. "
-        "Return JSON only with keys cell_id, confidence, rationale. "
+        "The image has a yellow row/column grid drawn over the screenshot crop. "
+        "Column numbers are shown above the image and row numbers are shown on the left, outside the image content. "
+        f"Choose the single grid cell whose center should be clicked to open the icon/app for: {query!r}. "
+        "Focus on the icon graphic itself, not the text label. "
+        "Return JSON only with keys cell_id, confidence, rationale, where cell_id uses the format R<row>C<column>, for example R3C4. "
         f"Valid cell_id values are: {', '.join(valid)}."
         f"{rejected_text} Do not return pixel coordinates."
     )
@@ -77,14 +77,17 @@ def build_target_review_prompt(*, query: str) -> str:
 
 def build_target_grid_review_prompt(*, query: str) -> str:
     return (
-        "You are a reviewer for a Windows desktop visual grounding system.\n\n"
-        f"Target: {query!r}\n\n"
-        "The image shows a grid overlaid on a desktop screenshot. "
-        "One cell is HIGHLIGHTED with a thick yellow outline. "
-        "Its CENTER is the proposed mouse click point.\n\n"
-        "Simple question: does the center of the yellow cell overlap with the "
-        f"{query!r} icon graphic or its label? If we click there, will it open the app?\n\n"
-        "If yes, accept. If the center would miss and click empty space or a different icon, reject."
+        "You are a strict reviewer for a Windows desktop visual grounding system.\n\n"
+        f"Target query: {query!r}\n\n"
+        "The image shows a grid of labeled cells drawn over a screenshot crop. "
+        "Another model already selected one cell, which is HIGHLIGHTED with a thicker yellow outline. "
+        "Your job: decide whether the HIGHLIGHTED cell actually contains the requested desktop item. "
+        "Accept it if the highlighted cell contains either:\n"
+        "1. recognizable visual evidence of the requested app/icon/shortcut, or\n"
+        "2. visible label text matching the query.\n\n"
+        "Look at the OTHER cells too as context, but ONLY judge the highlighted one. "
+        "Reject if the target is not visible in the highlighted cell, "
+        "if it is in a DIFFERENT cell, or if the evidence is too ambiguous to continue safely."
     )
 
 
