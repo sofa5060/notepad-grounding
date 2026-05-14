@@ -1,6 +1,5 @@
-from PIL import Image
-
 from notepad_grounding.models import TargetReviewResult
+from notepad_grounding.prompts import build_target_review_prompt
 from notepad_grounding.reviewers import resolve_openai_reviewer_model
 
 
@@ -40,18 +39,9 @@ def test_resolve_openai_reviewer_model_prefers_reviewer_then_legacy_judge_then_o
     assert resolve_openai_reviewer_model("explicit") == "explicit"
 
 
-class FakeTargetReviewer:
-    def review_target_crop(self, *, query: str, image: Image.Image) -> TargetReviewResult:
-        return TargetReviewResult(
-            contains_target=True,
-            confidence=1.0,
-            rationale=f"{query} is visible",
-            visible_evidence=f"crop size {image.size}",
-        )
+def test_target_review_prompt_is_built_outside_reviewer():
+    prompt = build_target_review_prompt(query="Notepad")
 
-
-def test_target_reviewer_protocol_shape():
-    result = FakeTargetReviewer().review_target_crop(query="Notepad", image=Image.new("RGB", (10, 20)))
-
-    assert result.contains_target is True
-    assert result.visible_evidence == "crop size (10, 20)"
+    assert "Target query: 'Notepad'" in prompt
+    assert "recognizable visual evidence" in prompt
+    assert "visible label text" in prompt

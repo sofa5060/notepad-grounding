@@ -20,14 +20,13 @@ Debug only the visual grounding step:
 
 ```powershell
 uv run notepad-grounding locate --query Notepad
-uv run notepad-grounding locate --query Notepad --image screenshots/desktop.png
 ```
 
 ## How It Works
 
 The system keeps screen-coordinate math deterministic. The LLM only chooses from labeled visual options.
 
-1. Capture or load a desktop screenshot.
+1. Capture a desktop screenshot.
 2. Draw a coarse labeled grid over the current image.
 3. Ask the vision model which cell contains the requested icon or shortcut.
 4. Ask the target crop reviewer whether the selected crop actually contains the target icon, app visual, or matching label.
@@ -106,7 +105,8 @@ Important locate artifacts:
 ```text
 src/notepad_grounding/
   cli.py          # command line interface
-  automate.py     # full Notepad automation loop
+  flow.py         # central product flow orchestrator
+  automation_steps.py # high-level desktop action/review steps
   locate.py       # visual grounding pipeline
   vision.py       # OpenAI vision chooser client and parsers
   reviewers.py    # target, bbox, and desktop reviewers
@@ -115,7 +115,7 @@ src/notepad_grounding/
   click_grid.py   # row/column click-grid overlays and mapping
   geometry.py     # boxes and coarse grid math
   images.py       # image drawing/cropping helpers
-  capture.py      # screenshot capture and image loading
+  capture.py      # screenshot capture
   desktop.py      # mouse/keyboard/window helpers
   api.py          # JSONPlaceholder fetch
 src/grid_ocr/

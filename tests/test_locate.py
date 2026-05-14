@@ -5,7 +5,6 @@ from PIL import Image
 
 from notepad_grounding.locate import run_locate
 from notepad_grounding.models import CellChoice
-from notepad_grounding.models import ClickGridChoice
 from notepad_grounding.models import IconDetection
 from notepad_grounding.models import TargetReviewResult
 
@@ -70,7 +69,7 @@ class FakeVisionClient:
         )
         if self.fail_points:
             raise ValueError("grid selection failed")
-        return ClickGridChoice(
+        return CellChoice(
             cell_id=self.grid_choices.pop(0),
             confidence=0.88,
             rationale="test grid cell",

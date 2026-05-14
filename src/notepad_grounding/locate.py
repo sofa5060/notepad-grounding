@@ -20,12 +20,9 @@ from notepad_grounding.geometry import Box
 from notepad_grounding.geometry import build_grid_cells
 from notepad_grounding.geometry import clamp_box
 from notepad_grounding.geometry import expand_box
-from notepad_grounding.reviewers import BboxReviewer
-from notepad_grounding.reviewers import TargetReviewer
 from notepad_grounding.images import crop_box
 from notepad_grounding.images import draw_box
 from notepad_grounding.images import draw_grid_cells
-from notepad_grounding.vision import VisionClient
 
 
 @dataclass(frozen=True)
@@ -102,7 +99,7 @@ def run_locate(
     image: Image.Image,
     *,
     query: str,
-    client: VisionClient,
+    client,
     output_root: Path,
     timestamp: str | None = None,
     rounds: int = 3,
@@ -110,8 +107,8 @@ def run_locate(
     later_grid: tuple[int, int] = (3, 3),
     crop_padding: int = 40,
     final_crop_max_size: tuple[int, int] = (450, 350),
-    target_reviewer: TargetReviewer | None = None,
-    bbox_reviewer: BboxReviewer | None = None,
+    target_reviewer=None,
+    bbox_reviewer=None,
     max_review_retries: int = 2,
     final_precision: str = "marked-point",
     bbox_fallback: bool = True,
@@ -318,8 +315,8 @@ def _run_marked_point_precision(
     final_crop: Image.Image,
     *,
     query: str,
-    client: VisionClient,
-    target_reviewer: TargetReviewer | None,
+    client,
+    target_reviewer,
     output_dir: Path,
     crop_box: Box,
     screen_image: Image.Image,
@@ -440,8 +437,8 @@ def _choose_reviewed_click_grid_cell(
     image: Image.Image,
     *,
     query: str,
-    client: VisionClient,
-    target_reviewer: TargetReviewer | None,
+    client,
+    target_reviewer,
     cells: list[ClickGridCell],
     overlay_path: Path,
     output_dir: Path,
@@ -508,7 +505,7 @@ def _run_bbox_precision(
     final_crop: Image.Image,
     *,
     query: str,
-    bbox_reviewer: BboxReviewer | None,
+    bbox_reviewer,
     output_dir: Path,
     crop_box: Box,
     screen_image: Image.Image,

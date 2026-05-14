@@ -15,14 +15,6 @@ class CellChoice:
 
 
 @dataclass(frozen=True)
-class ClickGridChoice:
-    cell_id: str
-    confidence: float
-    rationale: str
-    response_id: str | None = None
-
-
-@dataclass(frozen=True)
 class IconDetection:
     target_visible: bool
     icon_bbox: tuple[int, int, int, int]

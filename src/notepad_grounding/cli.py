@@ -6,15 +6,8 @@ import sys
 from pathlib import Path
 
 from notepad_grounding.api import ApiError
-from notepad_grounding.automate import run_automation
 from notepad_grounding.capture import CaptureError
-from notepad_grounding.capture import capture_desktop
-from notepad_grounding.capture import load_image
-from notepad_grounding.locate import run_locate
-from notepad_grounding.reviewers import OpenAIBboxReviewer
-from notepad_grounding.reviewers import OpenAIDesktopReviewer
-from notepad_grounding.reviewers import OpenAITargetReviewer
-from notepad_grounding.vision import OpenAIVisionClient
+from notepad_grounding.flow import run_flow
 
 
 def _setup_logging() -> None:
@@ -39,34 +32,37 @@ def build_parser() -> argparse.ArgumentParser:
     parser.set_defaults(command="run")
     locate = subparsers.add_parser("locate", help="Debug: locate a desktop icon without running automation.")
     locate.add_argument("--query", default="Notepad", help="Visible target query. Defaults to Notepad.")
-    locate.add_argument("--image", type=Path, default=None, help="Replay an existing screenshot instead of capturing.")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.command == "locate":
-        return run_locate_command(args)
-    return run_default_command(args)
+    return start_flow(args)
 
 
-def run_default_command(args: argparse.Namespace) -> int:
+def start_flow(args: argparse.Namespace) -> int:
     _setup_logging()
     try:
-        client = OpenAIVisionClient()
-        result = run_automation(
+        result = run_flow(
+            mode=args.command,
             query=args.query,
-            client=client,
-            desktop_reviewer=OpenAIDesktopReviewer(),
-            target_reviewer=OpenAITargetReviewer(),
-            bbox_reviewer=OpenAIBboxReviewer(),
             output_root=Path("output"),
             max_retries=3,
             retry_delay=1.0,
             post_limit=10,
             llm_rounds=3,
         )
+
+        if args.command == "locate":
+            _print_locate_result(result)
+            return 0
+
+        _print_automation_result(result)
+        return 0
+    except (CaptureError, OSError) as exc:
+        print(f"error: {exc}")
+        return 2
     except ApiError as exc:
         print(f"error: {exc}")
         return 4
@@ -74,46 +70,22 @@ def run_default_command(args: argparse.Namespace) -> int:
         print(f"error: {exc}")
         return 3
 
+
+def _print_automation_result(result) -> None:
     print("flow=automation")
     print(f"output_dir={result.output_dir}")
     print(f"result={result.result_json}")
     print(f"total_posts={result.total_posts}")
     print(f"succeeded={result.succeeded}")
     print(f"failed={result.failed}")
-    return 0
 
 
-def run_locate_command(args: argparse.Namespace) -> int:
-    try:
-        if args.image:
-            image = load_image(args.image)
-        else:
-            image = capture_desktop()
-    except (CaptureError, OSError) as exc:
-        print(f"error: {exc}")
-        return 2
-
-    try:
-        client = OpenAIVisionClient()
-        result = run_locate(
-            image,
-            query=args.query,
-            client=client,
-            target_reviewer=OpenAITargetReviewer(),
-            bbox_reviewer=OpenAIBboxReviewer(),
-            output_root=Path("output") / "locate",
-            rounds=3,
-        )
-    except Exception as exc:
-        print(f"error: {exc}")
-        return 3
-
+def _print_locate_result(result) -> None:
     print("flow=locate")
     print(f"output_dir={result.output_dir}")
     print(f"result={result.result_json}")
     print("found=true")
     print(f"center={result.center[0]},{result.center[1]}")
-    return 0
 
 
 if __name__ == "__main__":

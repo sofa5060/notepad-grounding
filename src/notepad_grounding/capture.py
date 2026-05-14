@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import platform
-from pathlib import Path
 
 from PIL import Image
 
@@ -10,13 +9,9 @@ class CaptureError(RuntimeError):
     """Raised when screenshot capture cannot run."""
 
 
-def load_image(path: Path) -> Image.Image:
-    return Image.open(path).convert("RGB")
-
-
 def capture_desktop(*, require_windows: bool = True, monitor_index: int = 1) -> Image.Image:
     if require_windows and platform.system() != "Windows":
-        raise CaptureError("Live desktop capture must run inside Windows. Use --image to replay a screenshot.")
+        raise CaptureError("Live desktop capture must run inside Windows.")
 
     try:
         import mss

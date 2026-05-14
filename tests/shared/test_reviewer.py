@@ -1,5 +1,6 @@
 from notepad_grounding.models import DesktopReviewResult
-from notepad_grounding.reviewers import OpenAIDesktopReviewer
+from notepad_grounding.prompts import build_desktop_review_prompt
+from notepad_grounding.reviewers import OpenAIReviewer
 
 
 def test_review_result_model_validates():
@@ -34,4 +35,15 @@ def test_desktop_review_result_shape():
     )
 
     assert result.status == "success"
-    assert OpenAIDesktopReviewer.__name__ == "OpenAIDesktopReviewer"
+    assert OpenAIReviewer.__name__ == "OpenAIReviewer"
+
+
+def test_desktop_review_prompt_is_built_outside_reviewer():
+    prompt = build_desktop_review_prompt(
+        action="double-click Notepad",
+        expected="Notepad is open",
+    )
+
+    assert "double-click Notepad" in prompt
+    assert "Notepad is open" in prompt
+    assert "unexpected pop-up" in prompt

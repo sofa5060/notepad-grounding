@@ -4,8 +4,9 @@ import json
 import os
 from dataclasses import asdict
 from pathlib import Path
-from typing import Protocol
 
+import instructor
+from openai import OpenAI
 from PIL import Image
 
 from notepad_grounding.env import load_env_file
@@ -18,80 +19,27 @@ from notepad_grounding.models import TargetReviewResult
 from notepad_grounding.models import TargetReviewResultModel
 from notepad_grounding.prompts import build_bbox_initial_prompt
 from notepad_grounding.prompts import build_bbox_validation_prompt
+from notepad_grounding.prompts import build_desktop_review_prompt
+from notepad_grounding.prompts import build_target_review_prompt
 from notepad_grounding.vision import DEFAULT_OPENAI_MODEL
-from notepad_grounding.vision import parse_icon_detection
 
 
-class TargetReviewer(Protocol):
-    def review_target_crop(self, *, query: str, image: Image.Image) -> TargetReviewResult:
-        """Return whether a selected crop contains the requested desktop target."""
-
-
-class DesktopReviewer(Protocol):
-    def review_desktop_state(
-        self,
-        *,
-        action: str,
-        expected: str,
-        image: Image.Image,
-    ) -> DesktopReviewResult:
-        """Review the current desktop state after an automation action."""
-
-
-class BboxReviewer(Protocol):
-    def review_bbox(
-        self,
-        *,
-        query: str,
-        image: Image.Image,
-        max_iterations: int = 3,
-        debug_dir: Path | None = None,
-    ) -> IconDetection:
-        """Locate and review a crop-local icon bbox."""
-
-
-class OpenAITargetReviewer:
-    """Vision reviewer that validates a candidate grid crop before the search descends."""
+class OpenAIReviewer:
+    """OpenAI reviewer for target crops, desktop state, and bbox fallback."""
 
     def __init__(self, *, model: str | None = None) -> None:
         load_env_file()
-        try:
-            import instructor
-            from openai import OpenAI
-        except ImportError as exc:
-            raise RuntimeError("Missing OpenAI/instructor SDK. Run `uv sync` after pulling latest.") from exc
-
         if not os.environ.get("OPENAI_API_KEY"):
             raise RuntimeError("OPENAI_API_KEY is required. Add it to .env or set it in the shell.")
-        self._client = instructor.from_openai(OpenAI())
+        self._client = OpenAI()
+        self._structured_client = instructor.from_openai(self._client)
         self._model = resolve_openai_reviewer_model(model)
 
     def review_target_crop(self, *, query: str, image: Image.Image) -> TargetReviewResult:
-        prompt = (
-            "You are a strict reviewer for a Windows desktop visual grounding system.\n\n"
-            f"Target query: {query!r}\n\n"
-            "The image is a crop from a selected grid cell. Decide whether this crop contains "
-            "the requested desktop item. Accept the crop if it contains either:\n"
-            "1. recognizable visual evidence of the requested app/icon/shortcut, or\n"
-            "2. visible label text matching the query.\n\n"
-            "Reject the crop if the target is not visible, if it only contains a different app, "
-            "or if the evidence is too ambiguous to continue safely."
-        )
-        parsed: TargetReviewResultModel = self._client.chat.completions.create(
-            model=self._model,
+        parsed: TargetReviewResultModel = self._ask_structured_reviewer(
+            prompt=build_target_review_prompt(query=query),
+            image=image,
             response_model=TargetReviewResultModel,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": image_to_data_url(image), "detail": "high"},
-                        },
-                    ],
-                }
-            ],
         )
 
         return TargetReviewResult(
@@ -101,23 +49,6 @@ class OpenAITargetReviewer:
             visible_evidence=parsed.visible_evidence.strip(),
         )
 
-
-class OpenAIDesktopReviewer:
-    """LLM reviewer for desktop automation state."""
-
-    def __init__(self, *, model: str | None = None) -> None:
-        load_env_file()
-        try:
-            import instructor
-            from openai import OpenAI
-        except ImportError as exc:
-            raise RuntimeError("Missing OpenAI/instructor SDK. Run `uv sync` after pulling latest.") from exc
-
-        if not os.environ.get("OPENAI_API_KEY"):
-            raise RuntimeError("OPENAI_API_KEY is required. Add it to .env or set it in the shell.")
-        self._client = instructor.from_openai(OpenAI())
-        self._model = resolve_openai_reviewer_model(model)
-
     def review_desktop_state(
         self,
         *,
@@ -125,32 +56,10 @@ class OpenAIDesktopReviewer:
         expected: str,
         image: Image.Image,
     ) -> DesktopReviewResult:
-        prompt = (
-            "You are a desktop automation reviewer. You validate whether an action succeeded "
-            "by looking at the current screenshot.\n\n"
-            f"Action just performed: {action}\n"
-            f"Expected state: {expected}\n\n"
-            "Look at the screenshot and determine:\n"
-            "1. Is the expected state achieved?\n"
-            "2. Is there an unexpected pop-up, dialog, or wrong window open?\n"
-            "3. If something is wrong, what is the exact recovery action?"
-        )
-
-        parsed: ReviewResultModel = self._client.chat.completions.create(
-            model=self._model,
+        parsed: ReviewResultModel = self._ask_structured_reviewer(
+            prompt=build_desktop_review_prompt(action=action, expected=expected),
+            image=image,
             response_model=ReviewResultModel,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": image_to_data_url(image), "detail": "high"},
-                        },
-                    ],
-                }
-            ],
         )
 
         return DesktopReviewResult(
@@ -158,22 +67,6 @@ class OpenAIDesktopReviewer:
             action_needed=parsed.action_needed.strip(),
             rationale=parsed.rationale.strip(),
         )
-
-
-class OpenAIBboxReviewer:
-    """Iterative bbox reviewer used as the fallback final precision method."""
-
-    def __init__(self, *, model: str | None = None) -> None:
-        load_env_file()
-        try:
-            from openai import OpenAI
-        except ImportError as exc:
-            raise RuntimeError("Missing OpenAI SDK. Run `uv sync` after pulling latest.") from exc
-
-        if not os.environ.get("OPENAI_API_KEY"):
-            raise RuntimeError("OPENAI_API_KEY is required. Add it to .env or set it in the shell.")
-        self._client = OpenAI()
-        self._model = resolve_openai_reviewer_model(model)
 
     def review_bbox(
         self,
@@ -284,12 +177,64 @@ class OpenAIBboxReviewer:
         )
         return detection
 
+    def _ask_structured_reviewer(self, *, prompt: str, image: Image.Image, response_model):
+        return self._structured_client.chat.completions.create(
+            model=self._model,
+            response_model=response_model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_to_data_url(image), "detail": "high"},
+                        },
+                    ],
+                }
+            ],
+        )
+
 
 def _write_bbox_debug_json(debug_dir: Path | None, filename: str, payload: dict) -> None:
     if debug_dir is None:
         return
     debug_dir.mkdir(parents=True, exist_ok=True)
     (debug_dir / filename).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def parse_icon_detection(text: str, *, image_size: tuple[int, int]) -> IconDetection:
+    payload = _load_json(text)
+    raw_bbox = payload.get("icon_bbox")
+    if not isinstance(raw_bbox, (list, tuple)) or len(raw_bbox) != 4:
+        raise ValueError(f"LLM returned invalid icon_bbox: {raw_bbox!r}")
+
+    bbox = tuple(round(float(value)) for value in raw_bbox)
+    width, height = image_size
+    clamped = (
+        max(0, min(bbox[0], width)),
+        max(0, min(bbox[1], height)),
+        max(0, min(bbox[2], width)),
+        max(0, min(bbox[3], height)),
+    )
+    if clamped[2] <= clamped[0] or clamped[3] <= clamped[1]:
+        raise ValueError(f"LLM returned empty icon_bbox: {raw_bbox!r}")
+
+    confidence = max(0.0, min(1.0, float(payload.get("confidence", 0))))
+    rationale = str(payload.get("rationale", "")).strip()
+    return IconDetection(
+        target_visible=bool(payload.get("target_visible", False)),
+        icon_bbox=clamped,
+        confidence=confidence,
+        rationale=rationale,
+    )
+
+
+def _load_json(text: str) -> dict:
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"LLM did not return valid JSON: {text}") from exc
 
 
 def resolve_openai_reviewer_model(model: str | None = None) -> str:
