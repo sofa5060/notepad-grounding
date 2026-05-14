@@ -38,17 +38,15 @@ def build_click_grid_prompt(*, query: str, cell_ids: list[str], rejected_cell_id
     if rejected_cell_ids:
         rejected_text = (
             f" Do NOT choose rejected cells: {', '.join(rejected_cell_ids)}. "
-            "A reviewer inspected those cells and said the click point would miss the icon graphic."
+            "A reviewer said those cells would miss the target."
         )
     return (
         "You are helping a Windows desktop visual grounding system choose a click target. "
-        "This is a ZOOMED-IN crop of a Windows desktop icon. "
-        "The image has a yellow row/column grid drawn over it. "
-        "Column numbers are shown above the image and row numbers are shown on the left, outside the image content. "
-        f"Choose the single grid cell whose CENTER should be clicked to click on the icon GRAPHIC for: {query!r}. "
-        "Focus ONLY on the icon picture itself. The text label is BELOW the icon (Windows desktop convention) "
-        "and may be in a different cell — that is fine. Pick the cell whose center lands on the icon picture. "
-        "Return JSON only with keys cell_id, confidence, rationale, where cell_id uses the format R<row>C<column>, for example R3C4. "
+        "The image has a yellow row/column grid drawn over a desktop screenshot crop. "
+        "Column numbers are above, row numbers are on the left. "
+        f"Pick the cell whose CENTER overlaps with the {query!r} icon graphic or label. "
+        "If we click that center, it should open the app. "
+        "Return JSON only with keys cell_id, confidence, rationale. "
         f"Valid cell_id values are: {', '.join(valid)}."
         f"{rejected_text} Do not return pixel coordinates."
     )
@@ -79,19 +77,14 @@ def build_target_review_prompt(*, query: str) -> str:
 
 def build_target_grid_review_prompt(*, query: str) -> str:
     return (
-        "You are a strict reviewer for a Windows desktop visual grounding system.\n\n"
-        f"Target query: {query!r}\n\n"
-        "The image is a ZOOMED-IN crop of a Windows desktop icon area with a grid overlay. "
-        "Another model selected one cell as the click target; it is HIGHLIGHTED with a thicker yellow outline. "
-        "The highlighted cell's CENTER will be used as the mouse click point.\n\n"
-        "Your job: decide whether clicking the CENTER of the highlighted cell would land on the "
-        "ICON GRAPHIC (the picture itself) of the requested desktop item.\n\n"
-        "IMPORTANT: Windows desktop icons have the label text BELOW the icon picture. "
-        "The label may appear in a DIFFERENT cell — that is expected and fine. "
-        "ONLY judge the icon graphic, DO NOT reject because the label text is in another cell.\n\n"
-        "Accept if the highlighted cell's center lands on or very near the icon graphic. "
-        "Reject if the center would miss the icon graphic entirely or land on a different icon. "
-        "If multiple icons are visible, make sure the highlighted cell targets the correct one."
+        "You are a reviewer for a Windows desktop visual grounding system.\n\n"
+        f"Target: {query!r}\n\n"
+        "The image shows a grid overlaid on a desktop screenshot. "
+        "One cell is HIGHLIGHTED with a thick yellow outline. "
+        "Its CENTER is the proposed mouse click point.\n\n"
+        "Simple question: does the center of the yellow cell overlap with the "
+        f"{query!r} icon graphic or its label? If we click there, will it open the app?\n\n"
+        "If yes, accept. If the center would miss and click empty space or a different icon, reject."
     )
 
 
