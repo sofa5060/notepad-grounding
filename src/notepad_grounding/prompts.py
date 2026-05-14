@@ -38,14 +38,16 @@ def build_click_grid_prompt(*, query: str, cell_ids: list[str], rejected_cell_id
     if rejected_cell_ids:
         rejected_text = (
             f" Do NOT choose rejected cells: {', '.join(rejected_cell_ids)}. "
-            "A reviewer inspected those cells and said they do not contain the target."
+            "A reviewer inspected those cells and said the click point would miss the icon graphic."
         )
     return (
         "You are helping a Windows desktop visual grounding system choose a click target. "
-        "The image has a yellow row/column grid drawn over the screenshot crop. "
+        "This is a ZOOMED-IN crop of a Windows desktop icon. "
+        "The image has a yellow row/column grid drawn over it. "
         "Column numbers are shown above the image and row numbers are shown on the left, outside the image content. "
-        f"Choose the single grid cell whose center should be clicked to open the icon/app for: {query!r}. "
-        "Focus on the icon graphic itself, not the text label. "
+        f"Choose the single grid cell whose CENTER should be clicked to click on the icon GRAPHIC for: {query!r}. "
+        "Focus ONLY on the icon picture itself. The text label is BELOW the icon (Windows desktop convention) "
+        "and may be in a different cell — that is fine. Pick the cell whose center lands on the icon picture. "
         "Return JSON only with keys cell_id, confidence, rationale, where cell_id uses the format R<row>C<column>, for example R3C4. "
         f"Valid cell_id values are: {', '.join(valid)}."
         f"{rejected_text} Do not return pixel coordinates."
@@ -79,15 +81,17 @@ def build_target_grid_review_prompt(*, query: str) -> str:
     return (
         "You are a strict reviewer for a Windows desktop visual grounding system.\n\n"
         f"Target query: {query!r}\n\n"
-        "The image shows a grid of labeled cells drawn over a screenshot crop. "
-        "Another model already selected one cell, which is HIGHLIGHTED with a thicker yellow outline. "
-        "Your job: decide whether the HIGHLIGHTED cell actually contains the requested desktop item. "
-        "Accept it if the highlighted cell contains either:\n"
-        "1. recognizable visual evidence of the requested app/icon/shortcut, or\n"
-        "2. visible label text matching the query.\n\n"
-        "Look at the OTHER cells too as context, but ONLY judge the highlighted one. "
-        "Reject if the target is not visible in the highlighted cell, "
-        "if it is in a DIFFERENT cell, or if the evidence is too ambiguous to continue safely."
+        "The image is a ZOOMED-IN crop of a Windows desktop icon area with a grid overlay. "
+        "Another model selected one cell as the click target; it is HIGHLIGHTED with a thicker yellow outline. "
+        "The highlighted cell's CENTER will be used as the mouse click point.\n\n"
+        "Your job: decide whether clicking the CENTER of the highlighted cell would land on the "
+        "ICON GRAPHIC (the picture itself) of the requested desktop item.\n\n"
+        "IMPORTANT: Windows desktop icons have the label text BELOW the icon picture. "
+        "The label may appear in a DIFFERENT cell — that is expected and fine. "
+        "ONLY judge the icon graphic, DO NOT reject because the label text is in another cell.\n\n"
+        "Accept if the highlighted cell's center lands on or very near the icon graphic. "
+        "Reject if the center would miss the icon graphic entirely or land on a different icon. "
+        "If multiple icons are visible, make sure the highlighted cell targets the correct one."
     )
 
 

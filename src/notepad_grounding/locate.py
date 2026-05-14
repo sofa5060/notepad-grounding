@@ -242,23 +242,13 @@ def run_locate(
             center = final_click_point.screen_point
             final_box = _point_box(center, bounds=bounds)
         except Exception as exc:
-            if not bbox_fallback:
-                raise
+            # Bbox fallback commented out — let failure propagate
+            # so the outer retry loop can try another grounding round.
             (output_dir / "click-point-error.json").write_text(
                 json.dumps({"error": str(exc)}, indent=2),
                 encoding="utf-8",
             )
-            final_method = "bbox_fallback"
-            center, final_box, final_detection = _run_bbox_precision(
-                final_crop,
-                query=query,
-                bbox_reviewer=bbox_reviewer,
-                output_dir=output_dir,
-                crop_box=current_box,
-                screen_image=image,
-                bounds=bounds,
-                final_crop_path=final_crop_path,
-            )
+            raise
     elif final_precision == "bbox":
         final_method = "bbox"
         center, final_box, final_detection = _run_bbox_precision(

@@ -346,23 +346,19 @@ def test_run_locate_falls_back_to_bbox_when_marked_points_fail(tmp_path):
         fail_points=True,
     )
 
-    result = run_locate(
-        image,
-        query="Notepad",
-        client=client,
-        output_root=tmp_path,
-        timestamp="fallback",
-        rounds=2,
-        first_grid=(2, 2),
-        later_grid=(2, 2),
-        crop_padding=0,
-        final_crop_max_size=(50, 50),
-        bbox_reviewer=FakeBboxReviewer(client.detection),
-    )
+    with pytest.raises(ValueError, match="grid selection failed"):
+        run_locate(
+            image,
+            query="Notepad",
+            client=client,
+            output_root=tmp_path,
+            timestamp="fallback",
+            rounds=2,
+            first_grid=(2, 2),
+            later_grid=(2, 2),
+            crop_padding=0,
+            final_crop_max_size=(50, 50),
+            bbox_reviewer=FakeBboxReviewer(client.detection),
+        )
 
-    assert result.final_method == "bbox_fallback"
-    assert result.center == (240, 180)
-    assert result.final_detection is not None
-    assert result.final_click_point is None
     assert (tmp_path / "fallback" / "click-point-error.json").exists()
-    assert (tmp_path / "fallback" / "final-detection.png").exists()
