@@ -1,10 +1,7 @@
 from __future__ import annotations
-
 import logging
 from pathlib import Path
-
 from PIL import Image
-
 from notepad_grounding.desktop import close_active_window
 from notepad_grounding.desktop import close_window_hard
 from notepad_grounding.desktop import double_click

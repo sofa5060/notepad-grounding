@@ -106,7 +106,7 @@ Important locate artifacts:
 src/notepad_grounding/
   cli.py          # command line interface
   flow.py         # central product flow orchestrator
-  automation_steps.py # high-level desktop action/review steps
+  desktop_interactions.py # high-level desktop interaction/review steps
   locate.py       # visual grounding pipeline
   vision.py       # OpenAI vision chooser client and parsers
   reviewers.py    # target, bbox, and desktop reviewers

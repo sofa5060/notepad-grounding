@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from notepad_grounding import automation_steps as steps
+from notepad_grounding import desktop_interactions as steps
 from notepad_grounding.api import fetch_posts
 from notepad_grounding.capture import capture_desktop
 from notepad_grounding.desktop import clear_target_directory

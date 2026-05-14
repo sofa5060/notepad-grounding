@@ -71,11 +71,11 @@ def test_run_flow_run_mode_processes_posts_and_actions(tmp_path):
         patch("notepad_grounding.flow.ensure_directory") as mock_ensure,
         patch("notepad_grounding.flow.clear_target_directory") as mock_clear,
         patch("notepad_grounding.flow.get_target_directory", return_value=tmp_path),
-        patch("notepad_grounding.automation_steps.double_click") as mock_click,
-        patch("notepad_grounding.automation_steps.type_text") as mock_type,
-        patch("notepad_grounding.automation_steps.press_hotkey") as mock_hotkey,
-        patch("notepad_grounding.automation_steps.sleep"),
-        patch("notepad_grounding.automation_steps.is_window_active", return_value=True),
+        patch("notepad_grounding.desktop_interactions.double_click") as mock_click,
+        patch("notepad_grounding.desktop_interactions.type_text") as mock_type,
+        patch("notepad_grounding.desktop_interactions.press_hotkey") as mock_hotkey,
+        patch("notepad_grounding.desktop_interactions.sleep"),
+        patch("notepad_grounding.desktop_interactions.is_window_active", return_value=True),
     ):
         result = run_flow(
             mode="run",
@@ -116,11 +116,11 @@ def test_run_flow_retries_failed_post_attempts(tmp_path):
         patch("notepad_grounding.flow.ensure_directory"),
         patch("notepad_grounding.flow.clear_target_directory"),
         patch("notepad_grounding.flow.get_target_directory", return_value=tmp_path),
-        patch("notepad_grounding.automation_steps.double_click") as mock_click,
-        patch("notepad_grounding.automation_steps.type_text") as mock_type,
-        patch("notepad_grounding.automation_steps.press_hotkey") as mock_hotkey,
-        patch("notepad_grounding.automation_steps.sleep"),
-        patch("notepad_grounding.automation_steps.is_window_active", return_value=True),
+        patch("notepad_grounding.desktop_interactions.double_click") as mock_click,
+        patch("notepad_grounding.desktop_interactions.type_text") as mock_type,
+        patch("notepad_grounding.desktop_interactions.press_hotkey") as mock_hotkey,
+        patch("notepad_grounding.desktop_interactions.sleep"),
+        patch("notepad_grounding.desktop_interactions.is_window_active", return_value=True),
     ):
         result = run_flow(
             mode="run",
@@ -153,10 +153,10 @@ def test_run_flow_records_failure_after_max_retries(tmp_path):
         patch("notepad_grounding.flow.ensure_directory"),
         patch("notepad_grounding.flow.clear_target_directory"),
         patch("notepad_grounding.flow.get_target_directory", return_value=tmp_path),
-        patch("notepad_grounding.automation_steps.double_click") as mock_click,
-        patch("notepad_grounding.automation_steps.type_text") as mock_type,
-        patch("notepad_grounding.automation_steps.press_hotkey") as mock_hotkey,
-        patch("notepad_grounding.automation_steps.sleep"),
+        patch("notepad_grounding.desktop_interactions.double_click") as mock_click,
+        patch("notepad_grounding.desktop_interactions.type_text") as mock_type,
+        patch("notepad_grounding.desktop_interactions.press_hotkey") as mock_hotkey,
+        patch("notepad_grounding.desktop_interactions.sleep"),
     ):
         result = run_flow(
             mode="run",

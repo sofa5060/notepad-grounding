@@ -62,6 +62,17 @@ def test_start_flow_calls_run_flow_for_locate_command(monkeypatch, tmp_path):
     assert "dependencies" not in calls
 
 
+def test_start_flow_reports_runtime_errors_without_capture_error(monkeypatch, capsys):
+    def fake_run_flow(**kwargs):
+        raise RuntimeError("Live desktop capture must run inside Windows.")
+
+    monkeypatch.setattr(cli, "run_flow", fake_run_flow)
+    args = build_parser().parse_args([])
+
+    assert cli.start_flow(args) == 3
+    assert "Live desktop capture must run inside Windows." in capsys.readouterr().out
+
+
 def test_default_parser_runs_automation_with_notepad_query():
     parser = build_parser()
     args = parser.parse_args([])
