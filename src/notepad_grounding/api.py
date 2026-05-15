@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import json
 import logging
 import time
-import urllib.request
-import urllib.error
+
+import requests
 
 API_URL = "https://jsonplaceholder.typicode.com/posts"
 MAX_RETRIES = 3
@@ -29,9 +28,13 @@ _DUMMY_POSTS: list[dict] = [
 def fetch_posts(*, limit: int = 10) -> list[dict]:
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            req = urllib.request.Request(API_URL, headers={"User-Agent": "notepad-grounding/1.0"})
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                posts = json.loads(resp.read().decode("utf-8"))
+            response = requests.get(
+                API_URL,
+                timeout=30,
+                headers={"User-Agent": "notepad-grounding/1.0"},
+            )
+            response.raise_for_status()
+            posts = response.json()
             if not isinstance(posts, list):
                 raise RuntimeError(f"Unexpected API response shape: {type(posts).__name__}")
             return posts[:limit]
