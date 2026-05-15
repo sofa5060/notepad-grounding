@@ -34,7 +34,6 @@ Desktop.ini
 # Local environment/config
 .env
 .env.*
-!.env.example
 
 # Generated runtime/debug artifacts
 output/
@@ -53,3 +52,6 @@ tjm-project/
 # Working documents
 ROADMAP.md
 AGENTS.md
+
+# Generated PDFs
+*.pdf

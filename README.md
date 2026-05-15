@@ -4,9 +4,16 @@ Vision-based Windows desktop automation that locates the Notepad icon using LLM 
 
 ## Setup
 
+Create a `.env` file in the project root:
+
+```text
+OPENAI_API_KEY=sk-your-real-key
+OPENAI_MODEL=gpt-5.4
+```
+
+Then install dependencies:
+
 ```powershell
-cp .env.example .env
-# edit .env and set your OPENAI_API_KEY
 uv sync
 ```
 
@@ -33,15 +40,6 @@ uv run notepad-grounding
 | API unavailable (posts) | Retry up to 3 times, 5s delay; fallback to dummy data |
 | Window fails to open | Timeout after 8 seconds |
 | Close fails | Alt+F4 fallback |
-
-## Configuration
-
-Copy `.env.example` to `.env` and set:
-
-```text
-OPENAI_API_KEY=sk-your-real-key
-OPENAI_MODEL=gpt-5.4
-```
 
 ## Requirements
 
