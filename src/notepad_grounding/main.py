@@ -6,12 +6,8 @@ import time
 from pathlib import Path
 
 from notepad_grounding.api import fetch_posts
-from notepad_grounding.automation import close_notepad
-from notepad_grounding.automation import open_icon
+from notepad_grounding.automation import automate_post
 from notepad_grounding.automation import reset_target_directory
-from notepad_grounding.automation import save_as
-from notepad_grounding.automation import target_file_for_post
-from notepad_grounding.automation import type_post
 from notepad_grounding.llm import locate_icon
 
 QUERY = "Notepad"
@@ -35,18 +31,12 @@ def main() -> None:
 
     posts = fetch_posts(limit=RUNS)
     for index, post in enumerate(posts, start=1):
-        full_path = target_file_for_post(target_dir, post, index=index)
         run_output_dir = OUTPUT_DIR / f"{index:02d}"
         logger.info("[%d/%d] locating %s", index, len(posts), QUERY)
 
         guess = locate_icon(query=QUERY, output_dir=run_output_dir)
         logger.info("double-clicking %s at (%d, %d)", QUERY, guess.x, guess.y)
-        open_icon(guess.x, guess.y)
-
-        type_post(post)
-        save_as(full_path)
-        close_notepad()
-
+        full_path = automate_post(post=post, index=index, target_dir=target_dir, click_x=guess.x, click_y=guess.y)
         logger.info("saved to %s", full_path)
         if index < len(posts):
             logger.info("waiting %d seconds before next run", DELAY_BETWEEN_RUNS_SECONDS)
