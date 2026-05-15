@@ -50,7 +50,7 @@ def locate_icon(*, query: str, output_dir: Path) -> IconLocation:
     image.convert("RGB").save(buffer, format="PNG")
     image_url = f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('ascii')}"
 
-    response = OpenAI().responses.create(
+    response = OpenAI().responses.parse(
         model=os.environ.get("OPENAI_MODEL", DEFAULT_MODEL),
         input=[
             {
@@ -61,17 +61,10 @@ def locate_icon(*, query: str, output_dir: Path) -> IconLocation:
                 ],
             }
         ],
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "icon_location",
-                "schema": IconLocation.model_json_schema(),
-                "strict": True,
-            }
-        },
+        text_format=IconLocation,
     )
 
-    raw = IconLocation.model_validate_json(response.output_text)
+    raw = response.output_parsed
 
     x = max(0, min(raw.x, width - 1))
     y = max(0, min(raw.y, height - 1))
