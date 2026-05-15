@@ -4,6 +4,7 @@ from PIL import Image
 
 from direct_llm_grounding.notepad_direct import CoordinateGuess
 from direct_llm_grounding.notepad_direct import draw_debug_box
+from direct_llm_grounding.notepad_direct import main
 from direct_llm_grounding.notepad_direct import parse_coordinate_guess
 
 
@@ -51,3 +52,16 @@ def test_draw_debug_box_marks_reported_location() -> None:
 
     assert annotated.getpixel((30, 20)) == (255, 0, 0)
     assert annotated.getpixel((50, 40)) == (255, 0, 0)
+
+
+def test_main_runs_simple_notepad_flow(monkeypatch) -> None:
+    calls = []
+
+    def fake_run() -> None:
+        calls.append("ran")
+
+    monkeypatch.setattr("direct_llm_grounding.simple_notepad_flow.run", fake_run)
+
+    main()
+
+    assert calls == ["ran"]

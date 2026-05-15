@@ -222,5 +222,11 @@ def strip_quotes(value: str) -> str:
     return value
 
 
+def main() -> None:
+    from direct_llm_grounding.simple_notepad_flow import run as run_simple_notepad_flow
+
+    run_simple_notepad_flow()
+
+
 if __name__ == "__main__":
-    run()
+    main()
