@@ -7,7 +7,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 from notepad_grounding.api import fetch_posts
 from notepad_grounding.automation import automate_post
-from notepad_grounding.automation import reset_target_directory
 from notepad_grounding.llm import locate_icon
 
 QUERY = "Notepad"
