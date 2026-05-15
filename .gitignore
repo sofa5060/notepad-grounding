@@ -53,6 +53,5 @@ tjm-project/
 ROADMAP.md
 AGENTS.md
 
-# PDFs (except submission)
-*.pdf
-!SUBMISSION.pdf
+# Local directories
+.pi/
