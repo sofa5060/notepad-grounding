@@ -1,8 +1,6 @@
 # notepad-grounding
 
-Vision-based Windows desktop automation for locating and using the Notepad shortcut.
-
-Running the project captures the desktop, visually grounds the requested icon, opens Notepad, writes posts from JSONPlaceholder, saves them to `Desktop/tjm-project`, and closes Notepad between posts. The default target is `Notepad`.
+Vision-based Windows desktop automation that locates the Notepad icon using LLM vision and runs a full automation workflow.
 
 ## Run
 
@@ -10,40 +8,23 @@ Running the project captures the desktop, visually grounds the requested icon, o
 uv run notepad-grounding
 ```
 
-Override the target query:
-
-```powershell
-uv run notepad-grounding --query Notepad
-```
-
-Debug only the visual grounding step:
-
-```powershell
-uv run notepad-grounding locate --query Notepad
-```
-
 ## How It Works
 
-The system keeps screen-coordinate math deterministic. The LLM only chooses from labeled visual options.
+1. Capture a full desktop screenshot
+2. Send to LLM with structured output — model returns center point and bounding box
+3. Confidence gating (0.7 minimum) with up to 3 retries on low confidence or API errors
+4. Double-click the icon center
+5. Type post content, save via Ctrl+Shift+S, close via Ctrl+Shift+W
+6. Repeat for 10 posts
 
-1. Capture a desktop screenshot.
-2. Draw a coarse labeled grid over the current image.
-3. Ask the vision model which cell contains the requested icon or shortcut.
-4. Ask the target crop reviewer whether the selected crop actually contains the target icon, app visual, or matching label.
-5. If rejected, continue the same chooser conversation and forbid rejected cells.
-6. Repeat coarse-to-fine cropping until the target crop is small enough.
-7. Draw a 7x7 row/column click grid, then a 5x5 refinement grid.
-8. Map the final selected grid-cell center back to full-screen coordinates in code.
-9. If click-grid precision fails, run the bbox reviewer fallback and click the reviewed bbox center.
-10. During automation, use the desktop state reviewer after click/type/save/close actions.
+## Error Handling
 
-## Validation Layers
-
-| Reviewer | When it runs | What it checks |
-| --- | --- | --- |
-| Target crop reviewer | After selected coarse/click grid crops | The crop contains the requested icon/app visual or label |
-| Bbox reviewer | Bbox fallback only | The red bbox is tight and centered on the clickable icon graphic |
-| Desktop state reviewer | After automation actions | The desktop state matches the expected result |
+| Scenario | Handling |
+|----------|----------|
+| Low confidence / API error | Retry up to 3 times, 1s delay |
+| API unavailable (posts) | Retry up to 3 times, 5s delay; fallback to dummy data |
+| Window fails to open | Timeout after 8 seconds |
+| Close fails | Alt+F4 fallback |
 
 ## Configuration
 
@@ -52,89 +33,35 @@ Copy `.env.example` to `.env` and set:
 ```text
 OPENAI_API_KEY=sk-your-real-key
 OPENAI_MODEL=gpt-5.4
-OPENAI_REVIEWER_MODEL=
 ```
-
-`OPENAI_REVIEWER_MODEL` is optional. If unset, reviewers use legacy `OPENAI_JUDGE_MODEL` when present, then `OPENAI_MODEL`, then the default `gpt-5.4`.
 
 ## Requirements
 
-- Windows 10/11 for live capture and automation
+- Windows 10/11, 1920x1080, 100% scale
 - Python 3.11+
 - `uv`
 - Desktop shortcut named `Notepad`
-- Target display: `1920x1080`, `100%` scale
-
-Avoid Parallels shared folders for final Windows testing. Clone into a normal Windows path such as:
-
-```text
-C:\Users\<user>\Desktop\notepad-grounding
-```
-
-## Output
-
-Default automation output:
-
-```text
-output/automation/<timestamp>/
-```
-
-Each nested locate run saves artifacts under:
-
-```text
-output/automation/<timestamp>/locate/<timestamp>/
-```
-
-Important locate artifacts:
-
-- `00-source.png` — original screenshot
-- `01-grid.png`, `01-selected.png` — coarse grid and selected cell
-- `01-target-review-crop-attempt-1.png` — selected crop sent to the target reviewer
-- `01-target-review-result-attempt-1.json` — structured target reviewer result
-- `final-crop.png` — final cropped region
-- `click-points-01.png` — coarse final row/column grid
-- `click-points-02.png` — fine row/column grid
-- `click-point-final.png` — final selected click point on the final crop
-- `click-point-full.png` — final selected click point on the full screenshot
-- `click-point-final.json` — final click result
-- `bbox-*.json/png`, `final-detection.png` — written when bbox fallback runs
-- `result.json` — final structured locate result
 
 ## Project Structure
 
 ```text
 src/notepad_grounding/
-  cli.py          # command line interface
-  flow.py         # central product flow orchestrator
-  desktop_interactions.py # high-level desktop interaction/review steps
-  locate.py       # visual grounding pipeline
-  vision.py       # OpenAI vision chooser client and parsers
-  reviewers.py    # target, bbox, and desktop reviewers
-  prompts.py      # prompt builders
-  models.py       # dataclasses and Pydantic response models
-  click_grid.py   # row/column click-grid overlays and mapping
-  geometry.py     # boxes and coarse grid math
-  images.py       # image drawing/cropping helpers
-  capture.py      # screenshot capture
-  desktop.py      # mouse/keyboard/window helpers
-  api.py          # JSONPlaceholder fetch
-src/grid_ocr/
-  ocr.py          # preserved side OCR experiment, not the main runtime path
-  grounding.py
-  annotate.py
+  main.py         # entry point and orchestration
+  llm.py          # LLM vision icon locating with structured output
+  automation.py   # desktop automation (click, type, save, close)
+  api.py          # JSONPlaceholder post fetching with dummy fallback
 ```
+
+## Output
+
+Per-run artifacts saved under `output/notepad_grounding/<NN>/`:
+
+- `screenshot.png` — original screenshot
+- `response.json` — structured LLM response
+- `annotated.png` — screenshot with bounding box, crosshair, and confidence label
 
 ## Development
 
 ```bash
 uv run pytest -v
-uv run notepad-grounding --help
-uv run notepad-grounding locate --help
 ```
-
-## Notes
-
-- The main command runs the full automation; `locate` is a debug command.
-- OCR is preserved as a separate side package under `src/grid_ocr`.
-- Bbox precision remains as fallback while the click-grid method is tested on Windows.
-- The implementation does not use Windows desktop item APIs, shell list view APIs, or accessibility APIs to obtain icon positions.
