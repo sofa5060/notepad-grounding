@@ -18,6 +18,9 @@ from direct_llm_grounding.notepad_direct import parse_coordinate_guess
 QUERY = "Notepad"
 RUNS = 10
 DELAY_BETWEEN_RUNS_SECONDS = 5
+WINDOW_OPEN_TIMEOUT_SECONDS = 8.0
+WINDOW_OPEN_POLL_SECONDS = 0.25
+WINDOW_OPEN_SETTLE_SECONDS = 0.75
 API_URL = "https://jsonplaceholder.typicode.com/posts"
 OUTPUT_DIR = Path("output/simple_notepad_flow")
 
@@ -118,9 +121,63 @@ def reset_target_directory(target_dir: Path) -> None:
 
 
 def open_notepad_at(x: int, y: int) -> None:
+    before_windows = visible_window_handles()
     pyautogui.moveTo(x, y, duration=0.3)
     pyautogui.doubleClick()
-    time.sleep(2.0)
+    if before_windows is None:
+        logger.info("window snapshot unavailable; waiting %.1fs after open", WINDOW_OPEN_TIMEOUT_SECONDS)
+        time.sleep(WINDOW_OPEN_TIMEOUT_SECONDS)
+        return
+
+    logger.info("waiting for visible window set to change")
+    changed = wait_for_visible_window_change(
+        before_windows,
+        timeout_seconds=WINDOW_OPEN_TIMEOUT_SECONDS,
+        poll_seconds=WINDOW_OPEN_POLL_SECONDS,
+        settle_seconds=WINDOW_OPEN_SETTLE_SECONDS,
+    )
+    if not changed:
+        logger.warning("visible window set did not change within %.1fs; continuing", WINDOW_OPEN_TIMEOUT_SECONDS)
+
+
+def visible_window_handles() -> set[int] | None:
+    if os.name != "nt":
+        return None
+
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    handles: set[int] = set()
+
+    def enum_callback(hwnd: int, _lparam: int) -> bool:
+        if user32.IsWindowVisible(hwnd) and user32.GetWindowTextLengthW(hwnd) > 0:
+            handles.add(hwnd)
+        return True
+
+    enum_windows_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumWindows(enum_windows_proc(enum_callback), 0)
+    return handles
+
+
+def wait_for_visible_window_change(
+    before_windows: set[int],
+    *,
+    timeout_seconds: float = WINDOW_OPEN_TIMEOUT_SECONDS,
+    poll_seconds: float = WINDOW_OPEN_POLL_SECONDS,
+    settle_seconds: float = WINDOW_OPEN_SETTLE_SECONDS,
+    snapshot_fn=visible_window_handles,
+    sleep_fn=time.sleep,
+    monotonic_fn=time.monotonic,
+) -> bool:
+    deadline = monotonic_fn() + timeout_seconds
+    while monotonic_fn() < deadline:
+        current_windows = snapshot_fn()
+        if current_windows is not None and current_windows != before_windows:
+            sleep_fn(settle_seconds)
+            return True
+        sleep_fn(poll_seconds)
+    return False
 
 
 def paste_text(text: str) -> None:

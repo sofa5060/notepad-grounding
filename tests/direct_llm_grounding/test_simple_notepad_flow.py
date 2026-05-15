@@ -6,6 +6,7 @@ from direct_llm_grounding.simple_notepad_flow import filename_for_post
 from direct_llm_grounding.simple_notepad_flow import format_post_content
 from direct_llm_grounding.simple_notepad_flow import reset_target_directory
 from direct_llm_grounding.simple_notepad_flow import target_file_for_post
+from direct_llm_grounding.simple_notepad_flow import wait_for_visible_window_change
 
 
 def test_format_post_content_matches_notepad_text() -> None:
@@ -37,3 +38,48 @@ def test_reset_target_directory_clears_existing_notes(tmp_path) -> None:
     reset_target_directory(tmp_path)
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_wait_for_visible_window_change_returns_when_snapshot_changes() -> None:
+    snapshots = iter([{1, 2}, {1, 2}, {1, 2, 3}])
+    now = [0.0]
+    sleeps: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        now[0] += seconds
+
+    changed = wait_for_visible_window_change(
+        {1, 2},
+        timeout_seconds=1.0,
+        poll_seconds=0.1,
+        settle_seconds=0.2,
+        snapshot_fn=lambda: next(snapshots),
+        sleep_fn=sleep,
+        monotonic_fn=lambda: now[0],
+    )
+
+    assert changed is True
+    assert sleeps == [0.1, 0.1, 0.2]
+
+
+def test_wait_for_visible_window_change_times_out_without_change() -> None:
+    now = [0.0]
+    sleeps: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        now[0] += seconds
+
+    changed = wait_for_visible_window_change(
+        {1, 2},
+        timeout_seconds=0.3,
+        poll_seconds=0.1,
+        settle_seconds=0.2,
+        snapshot_fn=lambda: {1, 2},
+        sleep_fn=sleep,
+        monotonic_fn=lambda: now[0],
+    )
+
+    assert changed is False
+    assert sleeps == [0.1, 0.1, 0.1]
