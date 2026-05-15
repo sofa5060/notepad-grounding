@@ -42,6 +42,10 @@ def main() -> None:
         logger.info("[%d/%d] locating %s", index, len(posts), QUERY)
 
         coordinates = locate_icon(query=QUERY, output_dir=run_output_dir)
+        if coordinates is None:
+            logger.warning("[%d/%d] could not locate %s with sufficient confidence, skipping",
+                           index, len(posts), QUERY)
+            continue
         logger.info("double-clicking %s at (%d, %d)", QUERY, coordinates.x, coordinates.y)
         full_path = automate_post(post=post, index=index, target_dir=target_dir, click_x=coordinates.x, click_y=coordinates.y)
         logger.info("saved to %s", full_path)

@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 DEFAULT_MODEL = "gpt-5.4"
 MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 1.0
-MIN_CONFIDENCE = 0.7
+MIN_CONFIDENCE = 0.85
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class IconLocation(BaseModel):
     rationale: str = Field(description="Short explanation of the location choice")
 
 
-def locate_icon(*, query: str, output_dir: Path) -> IconLocation:
+def locate_icon(*, query: str, output_dir: Path) -> IconLocation | None:
     with mss.MSS() as screen_capture:
         screenshot = screen_capture.grab(screen_capture.monitors[1])
     image = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
@@ -91,6 +91,11 @@ def locate_icon(*, query: str, output_dir: Path) -> IconLocation:
 
     if raw is None:
         raise RuntimeError(f"Failed to locate {query} after {MAX_RETRIES} attempts")
+
+    if raw.confidence < MIN_CONFIDENCE:
+        logger.warning("all %d attempts below confidence threshold (best=%.2f < %.2f)",
+                       MAX_RETRIES, raw.confidence, MIN_CONFIDENCE)
+        return None
 
     x = max(0, min(raw.x, width - 1))
     y = max(0, min(raw.y, height - 1))
