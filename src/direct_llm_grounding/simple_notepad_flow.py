@@ -45,6 +45,7 @@ def run() -> None:
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     target_dir = get_target_directory()
+    logger.info("clearing notes folder: %s", target_dir)
     reset_target_directory(target_dir)
 
     posts = fetch_posts(limit=RUNS)

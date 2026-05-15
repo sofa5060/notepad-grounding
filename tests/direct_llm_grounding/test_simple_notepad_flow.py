@@ -4,6 +4,7 @@ from pathlib import Path
 
 from direct_llm_grounding.simple_notepad_flow import filename_for_post
 from direct_llm_grounding.simple_notepad_flow import format_post_content
+from direct_llm_grounding.simple_notepad_flow import reset_target_directory
 from direct_llm_grounding.simple_notepad_flow import target_file_for_post
 
 
@@ -25,3 +26,14 @@ def test_target_file_for_post_joins_target_directory() -> None:
     assert target_file_for_post(Path("C:/Users/test/Desktop/tjm-project"), {"id": 4}, index=1) == Path(
         "C:/Users/test/Desktop/tjm-project/post_4.txt"
     )
+
+
+def test_reset_target_directory_clears_existing_notes(tmp_path) -> None:
+    (tmp_path / "old-note.txt").write_text("old", encoding="utf-8")
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (nested / "old-nested-note.txt").write_text("old", encoding="utf-8")
+
+    reset_target_directory(tmp_path)
+
+    assert list(tmp_path.iterdir()) == []
