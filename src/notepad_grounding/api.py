@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import logging
+import time
 
 import requests
 
 API_URL = "https://jsonplaceholder.typicode.com/posts"
+MAX_RETRIES = 3
+RETRY_DELAY_SECONDS = 5.0
+
 logger = logging.getLogger(__name__)
 
 _DUMMY_POSTS: list[dict] = [
@@ -22,13 +26,18 @@ _DUMMY_POSTS: list[dict] = [
 
 
 def fetch_posts(*, limit: int = 10) -> list[dict]:
-    try:
-        response = requests.get(API_URL, timeout=30)
-        response.raise_for_status()
-        posts = response.json()
-        if not isinstance(posts, list):
-            raise RuntimeError(f"Unexpected API response shape: {type(posts).__name__}")
-        return posts[:limit]
-    except Exception as exc:
-        logger.warning("API unavailable (%s). Using fallback dummy data.", exc)
-        return _DUMMY_POSTS[:limit]
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            response = requests.get(API_URL, timeout=30)
+            response.raise_for_status()
+            posts = response.json()
+            if not isinstance(posts, list):
+                raise RuntimeError(f"Unexpected API response shape: {type(posts).__name__}")
+            return posts[:limit]
+        except Exception as exc:
+            logger.warning("attempt %d/%d: API error — %s", attempt, MAX_RETRIES, exc)
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_DELAY_SECONDS)
+
+    logger.warning("all %d attempts failed, falling back to dummy data", MAX_RETRIES)
+    return _DUMMY_POSTS[:limit]
