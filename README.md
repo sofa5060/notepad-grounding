@@ -2,6 +2,14 @@
 
 Vision-based Windows desktop automation that locates the Notepad icon using LLM vision and runs a full automation workflow.
 
+## Setup
+
+```powershell
+cp .env.example .env
+# edit .env and set your OPENAI_API_KEY
+uv sync
+```
+
 ## Run
 
 ```powershell
@@ -12,7 +20,7 @@ uv run notepad-grounding
 
 1. Capture a full desktop screenshot
 2. Send to LLM with structured output — model returns center point and bounding box
-3. Confidence gating (0.7 minimum) with up to 3 retries on low confidence or API errors
+3. Confidence gating (0.85 minimum) with up to 3 retries; run is skipped if all attempts fail
 4. Double-click the icon center
 5. Type post content, save via Ctrl+Shift+S, close via Ctrl+Shift+W
 6. Repeat for 10 posts
@@ -21,7 +29,7 @@ uv run notepad-grounding
 
 | Scenario | Handling |
 |----------|----------|
-| Low confidence / API error | Retry up to 3 times, 1s delay |
+| Low confidence / API error | Retry up to 3 times, 1s delay; skip run if still below 0.85 |
 | API unavailable (posts) | Retry up to 3 times, 5s delay; fallback to dummy data |
 | Window fails to open | Timeout after 8 seconds |
 | Close fails | Alt+F4 fallback |
