@@ -54,7 +54,7 @@ def run() -> CoordinateGuess:
 
 
 def capture_desktop() -> Image.Image:
-    with mss.mss() as screen_capture:
+    with mss.MSS() as screen_capture:
         screenshot = screen_capture.grab(screen_capture.monitors[1])
     return Image.frombytes("RGB", screenshot.size, screenshot.rgb)
 

@@ -4,7 +4,7 @@ from PIL import Image
 
 
 def capture_desktop(*, monitor_index: int = 1) -> Image.Image:
-    with mss.mss() as screen_capture:
+    with mss.MSS() as screen_capture:
         monitors = screen_capture.monitors
         if monitor_index >= len(monitors):
             raise RuntimeError(f"Monitor {monitor_index} is unavailable; found {len(monitors) - 1}.")
