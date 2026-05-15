@@ -1,11 +1,8 @@
 from __future__ import annotations
-
 import logging
 import platform
-import shutil
 import time
 from pathlib import Path
-
 import pyautogui
 
 WINDOW_OPEN_TIMEOUT_SECONDS = 8.0
@@ -16,15 +13,6 @@ TEXT_TYPE_INTERVAL_SECONDS = 0.01
 PATH_TYPE_INTERVAL_SECONDS = 0.01
 
 logger = logging.getLogger(__name__)
-
-
-def reset_target_directory(target_dir: Path) -> None:
-    target_dir.mkdir(parents=True, exist_ok=True)
-    for path in target_dir.iterdir():
-        if path.is_file():
-            path.unlink()
-        elif path.is_dir():
-            shutil.rmtree(path)
 
 
 def automate_post(*, post: dict, index: int, target_dir: Path, click_x: int, click_y: int) -> Path:

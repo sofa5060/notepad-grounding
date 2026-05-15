@@ -1,12 +1,10 @@
 from __future__ import annotations
-
 import base64
 import json
 import os
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-
 import mss
 from openai import OpenAI
 from PIL import Image
@@ -14,7 +12,6 @@ from PIL import ImageDraw
 from PIL import ImageFont
 
 DEFAULT_MODEL = "gpt-5.4"
-
 
 @dataclass(frozen=True)
 class CoordinateGuess:
@@ -32,26 +29,26 @@ def locate_icon(*, query: str, output_dir: Path) -> CoordinateGuess:
     width, height = image.size
 
     prompt = f"""
-You are looking at a Windows desktop screenshot.
+        You are looking at a Windows desktop screenshot.
 
-The screenshot dimensions are exactly width={width} pixels and height={height} pixels.
-The coordinate system starts at (0, 0) in the top-left corner.
-x increases to the right. y increases downward.
+        The screenshot dimensions are exactly width={width} pixels and height={height} pixels.
+        The coordinate system starts at (0, 0) in the top-left corner.
+        x increases to the right. y increases downward.
 
-Find the desktop shortcut icon for: {query}
+        Find the desktop shortcut icon for: {query}
 
-Return your best estimate as JSON only:
-{{
-  "x": 0,
-  "y": 0,
-  "bbox": {{"left": 0, "top": 0, "right": 0, "bottom": 0}},
-  "confidence": 0.0,
-  "rationale": "short explanation"
-}}
+        Return your best estimate as JSON only:
+        {{
+        "x": 0,
+        "y": 0,
+        "bbox": {{"left": 0, "top": 0, "right": 0, "bottom": 0}},
+        "confidence": 0.0,
+        "rationale": "short explanation"
+        }}
 
-Use x and y for the center of the icon graphic. Use bbox for the visible icon graphic area.
-Do not return Markdown. Do not explain outside the JSON.
-""".strip()
+        Use x and y for the center of the icon graphic. Use bbox for the visible icon graphic area.
+        Do not return Markdown. Do not explain outside the JSON.
+    """.strip()
 
     buffer = BytesIO()
     image.convert("RGB").save(buffer, format="PNG")
