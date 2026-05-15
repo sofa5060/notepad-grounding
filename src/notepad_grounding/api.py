@@ -28,14 +28,18 @@ _DUMMY_POSTS: list[dict] = [
 def fetch_posts(*, limit: int = 10) -> list[dict]:
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            response = requests.get(API_URL, timeout=30)
+            response = requests.get(
+                API_URL,
+                timeout=30,
+                headers={"User-Agent": "notepad-grounding/1.0"},
+            )
             response.raise_for_status()
             posts = response.json()
             if not isinstance(posts, list):
                 raise RuntimeError(f"Unexpected API response shape: {type(posts).__name__}")
             return posts[:limit]
         except Exception as exc:
-            logger.warning("attempt %d/%d: API error — %s", attempt, MAX_RETRIES, exc)
+            logger.warning("attempt %d/%d: %s: %s", attempt, MAX_RETRIES, type(exc).__name__, exc)
             if attempt < MAX_RETRIES:
                 time.sleep(RETRY_DELAY_SECONDS)
 
