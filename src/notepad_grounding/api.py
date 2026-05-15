@@ -26,13 +26,11 @@ _DUMMY_POSTS: list[dict] = [
 
 
 def fetch_posts(*, limit: int = 10) -> list[dict]:
+    session = requests.Session()
+    session.headers.update({"User-Agent": "notepad-grounding/1.0", "Connection": "close"})
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            response = requests.get(
-                API_URL,
-                timeout=30,
-                headers={"User-Agent": "notepad-grounding/1.0"},
-            )
+            response = session.get(API_URL, timeout=30)
             response.raise_for_status()
             posts = response.json()
             if not isinstance(posts, list):
