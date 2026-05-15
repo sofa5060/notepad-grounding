@@ -1,4 +1,6 @@
 from __future__ import annotations
+import ctypes
+from ctypes import wintypes
 import logging
 import platform
 import time
@@ -15,22 +17,20 @@ PATH_TYPE_INTERVAL_SECONDS = 0.01
 logger = logging.getLogger(__name__)
 
 
-def automate_post(*, post: dict, index: int, target_dir: Path, click_x: int, click_y: int) -> Path:
-    post_id = post.get("id", index)
-    full_path = target_dir / f"post_{post_id}.txt"
-    title = str(post.get("title", "")).strip()
-    body = str(post.get("body", "")).strip()
-    content = f"Title: {title}\n\n{body}"
-
+def click_icon(*, x: int, y: int) -> None:
     before_windows = visible_window_handles()
-    pyautogui.moveTo(click_x, click_y, duration=0.3)
+    pyautogui.moveTo(x, y, duration=0.3)
     pyautogui.doubleClick()
     wait_for_visible_window_change(before_windows, action="open", timeout_seconds=WINDOW_OPEN_TIMEOUT_SECONDS)
 
+
+def type_content(*, content: str) -> None:
     logger.info("typing %d characters into Notepad", len(content))
     pyautogui.write(content, interval=TEXT_TYPE_INTERVAL_SECONDS)
     time.sleep(0.5)
 
+
+def save_file(*, full_path: Path) -> None:
     pyautogui.hotkey("ctrl", "shift", "s")
     time.sleep(1.5)
     pyautogui.hotkey("alt", "n")
@@ -44,6 +44,8 @@ def automate_post(*, post: dict, index: int, target_dir: Path, click_x: int, cli
     pyautogui.press("enter")
     wait_for_visible_window_change(before_windows, action="save", timeout_seconds=WINDOW_CLOSE_TIMEOUT_SECONDS)
 
+
+def close_notepad() -> None:
     before_windows = visible_window_handles()
     logger.info("closing Notepad with Ctrl+Shift+W")
     pyautogui.hotkey("ctrl", "shift", "w")
@@ -56,15 +58,25 @@ def automate_post(*, post: dict, index: int, target_dir: Path, click_x: int, cli
         pyautogui.keyUp("alt")
         wait_for_visible_window_change(before_windows, action="Alt+F4 close", timeout_seconds=WINDOW_CLOSE_TIMEOUT_SECONDS)
 
+
+def automate_post(*, post: dict, index: int, target_dir: Path, click_x: int, click_y: int) -> Path:
+    post_id = post.get("id", index)
+    full_path = target_dir / f"post_{post_id}.txt"
+    title = str(post.get("title", "")).strip()
+    body = str(post.get("body", "")).strip()
+    content = f"Title: {title}\n\n{body}"
+
+    click_icon(x=click_x, y=click_y)
+    type_content(content=content)
+    save_file(full_path=full_path)
+    close_notepad()
+
     return full_path
 
 
 def visible_window_handles() -> set[int] | None:
     if platform.system() != "Windows":
         return None
-
-    import ctypes
-    from ctypes import wintypes
 
     user32 = ctypes.windll.user32
     handles: set[int] = set()
