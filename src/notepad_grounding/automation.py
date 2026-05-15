@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-import os
+import platform
 import shutil
 import time
 from pathlib import Path
@@ -93,7 +93,7 @@ def wait_for_window_change_or_sleep(before_windows: set[int] | None, *, action: 
 
 
 def visible_window_handles() -> set[int] | None:
-    if os.name != "nt":
+    if platform.system() != "Windows":
         return None
 
     import ctypes
