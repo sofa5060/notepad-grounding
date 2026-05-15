@@ -7,13 +7,13 @@ import time
 from pathlib import Path
 
 import pyautogui
-import requests
 
 from direct_llm_grounding.notepad_direct import ask_llm_for_coordinates
 from direct_llm_grounding.notepad_direct import capture_desktop
 from direct_llm_grounding.notepad_direct import draw_debug_box
 from direct_llm_grounding.notepad_direct import load_env_file
 from direct_llm_grounding.notepad_direct import parse_coordinate_guess
+from notepad_grounding.api import fetch_posts
 
 QUERY = "Notepad"
 RUNS = 10
@@ -21,24 +21,12 @@ DELAY_BETWEEN_RUNS_SECONDS = 5
 WINDOW_OPEN_TIMEOUT_SECONDS = 8.0
 WINDOW_OPEN_POLL_SECONDS = 0.25
 WINDOW_OPEN_SETTLE_SECONDS = 0.75
-API_URL = "https://jsonplaceholder.typicode.com/posts"
+TEXT_TYPE_INTERVAL_SECONDS = 0.01
+PATH_TYPE_INTERVAL_SECONDS = 0.01
 OUTPUT_DIR = Path("output/simple_notepad_flow")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
-
-_DUMMY_POSTS: list[dict] = [
-    {"id": 1, "title": "sunt aut facere repellat provident occaecati excepturi optio reprehenderit", "body": "quia et suscipit\nsuscipit recusandae consequuntur expedita et cum\nreprehenderit molestiae ut ut quas totam\nnostrum rerum est autem sunt rem eveniet architecto"},
-    {"id": 2, "title": "qui est esse", "body": "est rerum tempore vitae\nsequi sint nihil reprehenderit dolor beatae ea dolores neque\nfugiat blanditiis voluptate porro vel nihil molestiae ut reiciendis\nqui aperiam non debitis possimus qui neque nisi nulla"},
-    {"id": 3, "title": "ea molestias quasi exercitationem repellat qui ipsa sit aut", "body": "et iusto sed quo iure\nvoluptatem occaecati omnis eligendi aut ad\nvoluptatem doloribus vel accusantium quis pariatur\nmolestiae porro eius odio et labore et velit aut"},
-    {"id": 4, "title": "eum et est occaecati", "body": "ullam et saepe reiciendis voluptatem adipisci\nsit amet autem assumenda provident rerum culpa\nquis hic commodi nesciunt rem tenetur doloremque ipsam iure\nquis sunt voluptatem rerum illo velit"},
-    {"id": 5, "title": "nesciunt quas odio", "body": "repudiandae veniam quaerat sunt sed\nalias aut fugiat sit autem sed est\nvoluptatem omnis possimus esse voluptatibus quis\nest aut tenetur dolor neque"},
-    {"id": 6, "title": "dolorem eum magni eos aperiam quia", "body": "ut aspernatur corporis harum nihil quis provident sequi\nmollitia nobis aliquid molestiae\nperspiciatis et ea nemo ab reprehenderit accusantium quas\nvoluptate dolores velit et doloremque molestiae"},
-    {"id": 7, "title": "magnam facilis autem", "body": "dolore placeat quibusdam ea quo vitae\nmagni quis enim qui quis quo nemo aut saepe\nquidem repellat excepturi ut quia\nsunt ut sequi eos ea sed quas"},
-    {"id": 8, "title": "dolorem dolore est ipsam", "body": "dignissimos aperiam dolorem qui eum\nfacilis quibusdam animi sint suscipit qui sint possimus cum\nquaerat magni maiores excepturi\nipsam ut commodi dolor voluptatum modi aut vitae"},
-    {"id": 9, "title": "nesciunt iure omnis dolorem tempora et accusantium", "body": "consectetur animi nesciunt iure dolore\nquis quis cursus aut quam aperiam sequi eum\nquo fugit voluptatem reprehenderit\narchitecto dolores possimus quia quidem id maiores"},
-    {"id": 10, "title": "optio molestias id quia eum", "body": "quo et expedita modi cum officia vel magni\ndoloribus qui repudiandae\nvero nisi sit\nquos veniam quod sed accusamus veritatis error"},
-]
 
 
 def run() -> None:
@@ -77,19 +65,6 @@ def run() -> None:
         if index < len(posts):
             logger.info("waiting %d seconds before next run", DELAY_BETWEEN_RUNS_SECONDS)
             time.sleep(DELAY_BETWEEN_RUNS_SECONDS)
-
-
-def fetch_posts(*, limit: int = RUNS) -> list[dict]:
-    try:
-        response = requests.get(API_URL, timeout=30)
-        response.raise_for_status()
-        posts = response.json()
-        if not isinstance(posts, list):
-            raise RuntimeError(f"Unexpected API response shape: {type(posts).__name__}")
-        return posts[:limit]
-    except Exception as exc:
-        logger.warning("API unavailable (%s). Using fallback dummy data.", exc)
-        return _DUMMY_POSTS[:limit]
 
 
 def format_post_content(post: dict) -> str:
@@ -181,15 +156,21 @@ def wait_for_visible_window_change(
 
 
 def paste_text(text: str) -> None:
-    set_clipboard_text(text)
-    pyautogui.hotkey("ctrl", "v")
+    logger.info("typing %d characters into Notepad", len(text))
+    pyautogui.write(text, interval=TEXT_TYPE_INTERVAL_SECONDS)
     time.sleep(0.5)
 
 
 def save_notepad_as(full_path: Path) -> None:
     pyautogui.hotkey("ctrl", "shift", "s")
-    time.sleep(1.0)
-    paste_text(str(full_path))
+    time.sleep(1.5)
+    pyautogui.hotkey("alt", "n")
+    time.sleep(0.2)
+    pyautogui.hotkey("ctrl", "a")
+    time.sleep(0.2)
+    logger.info("typing save path: %s", full_path)
+    pyautogui.write(str(full_path), interval=PATH_TYPE_INTERVAL_SECONDS)
+    time.sleep(0.5)
     pyautogui.press("enter")
     time.sleep(1.0)
 
@@ -197,17 +178,6 @@ def save_notepad_as(full_path: Path) -> None:
 def close_notepad() -> None:
     pyautogui.hotkey("alt", "f4")
     time.sleep(1.0)
-
-
-def set_clipboard_text(text: str) -> None:
-    import tkinter
-
-    root = tkinter.Tk()
-    root.withdraw()
-    root.clipboard_clear()
-    root.clipboard_append(text)
-    root.update()
-    root.destroy()
 
 
 if __name__ == "__main__":
