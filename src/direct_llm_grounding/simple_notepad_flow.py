@@ -191,8 +191,8 @@ def save_notepad_as(full_path: Path) -> None:
 
 def close_notepad() -> None:
     before_close_windows = visible_window_handles()
-    logger.info("closing Notepad with Alt+F4")
-    pyautogui.hotkey("alt", "f4")
+    logger.info("closing Notepad with Ctrl+Shift+W")
+    pyautogui.hotkey("ctrl", "shift", "w")
     if before_close_windows is None:
         time.sleep(1.0)
         return
@@ -204,8 +204,31 @@ def close_notepad() -> None:
         poll_seconds=WINDOW_OPEN_POLL_SECONDS,
         settle_seconds=WINDOW_OPEN_SETTLE_SECONDS,
     )
-    if not closed:
+    if closed:
+        return
+
+    logger.warning("Ctrl+Shift+W did not close Notepad within %.1fs; trying Alt+F4", WINDOW_CLOSE_TIMEOUT_SECONDS)
+    before_alt_f4_windows = visible_window_handles()
+    press_alt_f4()
+    if before_alt_f4_windows is None:
+        time.sleep(1.0)
+        return
+
+    alt_closed = wait_for_visible_window_change(
+        before_alt_f4_windows,
+        timeout_seconds=WINDOW_CLOSE_TIMEOUT_SECONDS,
+        poll_seconds=WINDOW_OPEN_POLL_SECONDS,
+        settle_seconds=WINDOW_OPEN_SETTLE_SECONDS,
+    )
+    if not alt_closed:
         logger.warning("Notepad window did not visibly change within %.1fs after Alt+F4", WINDOW_CLOSE_TIMEOUT_SECONDS)
+
+
+def press_alt_f4() -> None:
+    pyautogui.keyDown("alt")
+    pyautogui.keyDown("f4")
+    pyautogui.keyUp("f4")
+    pyautogui.keyUp("alt")
 
 
 if __name__ == "__main__":
