@@ -21,6 +21,7 @@ DELAY_BETWEEN_RUNS_SECONDS = 5
 WINDOW_OPEN_TIMEOUT_SECONDS = 8.0
 WINDOW_OPEN_POLL_SECONDS = 0.25
 WINDOW_OPEN_SETTLE_SECONDS = 0.75
+WINDOW_CLOSE_TIMEOUT_SECONDS = 5.0
 TEXT_TYPE_INTERVAL_SECONDS = 0.01
 PATH_TYPE_INTERVAL_SECONDS = 0.01
 OUTPUT_DIR = Path("output/simple_notepad_flow")
@@ -171,13 +172,40 @@ def save_notepad_as(full_path: Path) -> None:
     logger.info("typing save path: %s", full_path)
     pyautogui.write(str(full_path), interval=PATH_TYPE_INTERVAL_SECONDS)
     time.sleep(0.5)
+    before_save_windows = visible_window_handles()
     pyautogui.press("enter")
-    time.sleep(1.0)
+    if before_save_windows is None:
+        time.sleep(1.0)
+        return
+
+    logger.info("waiting for Save As window to close")
+    saved = wait_for_visible_window_change(
+        before_save_windows,
+        timeout_seconds=WINDOW_CLOSE_TIMEOUT_SECONDS,
+        poll_seconds=WINDOW_OPEN_POLL_SECONDS,
+        settle_seconds=WINDOW_OPEN_SETTLE_SECONDS,
+    )
+    if not saved:
+        logger.warning("Save As window did not visibly change within %.1fs", WINDOW_CLOSE_TIMEOUT_SECONDS)
 
 
 def close_notepad() -> None:
+    before_close_windows = visible_window_handles()
+    logger.info("closing Notepad with Alt+F4")
     pyautogui.hotkey("alt", "f4")
-    time.sleep(1.0)
+    if before_close_windows is None:
+        time.sleep(1.0)
+        return
+
+    logger.info("waiting for Notepad window to close")
+    closed = wait_for_visible_window_change(
+        before_close_windows,
+        timeout_seconds=WINDOW_CLOSE_TIMEOUT_SECONDS,
+        poll_seconds=WINDOW_OPEN_POLL_SECONDS,
+        settle_seconds=WINDOW_OPEN_SETTLE_SECONDS,
+    )
+    if not closed:
+        logger.warning("Notepad window did not visibly change within %.1fs after Alt+F4", WINDOW_CLOSE_TIMEOUT_SECONDS)
 
 
 if __name__ == "__main__":
