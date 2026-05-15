@@ -1,6 +1,6 @@
-from notepad_grounding.models import TargetReviewResult
-from notepad_grounding.prompts import build_target_review_prompt
-from notepad_grounding.reviewers import resolve_openai_reviewer_model
+from notepad_grounding_paper.models import TargetReviewResult
+from notepad_grounding_paper.prompts import build_target_review_prompt
+from notepad_grounding_paper.reviewers import resolve_openai_reviewer_model
 
 
 def test_target_review_result_accepts_true_false_verdicts():

@@ -1,6 +1,6 @@
 import os
 
-from notepad_grounding.env import load_env_file
+from notepad_grounding_paper.env import load_env_file
 
 
 def test_load_env_file_sets_missing_values_without_overwriting_existing(tmp_path, monkeypatch):

@@ -5,7 +5,7 @@ import logging
 import sys
 from pathlib import Path
 
-from notepad_grounding.flow import run_flow
+from notepad_grounding_paper.flow import run_flow
 
 
 def _setup_logging() -> None:

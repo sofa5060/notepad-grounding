@@ -3,10 +3,10 @@ import json
 import pytest
 from PIL import Image
 
-from notepad_grounding.locate import run_locate
-from notepad_grounding.models import CellChoice
-from notepad_grounding.models import IconDetection
-from notepad_grounding.models import TargetReviewResult
+from notepad_grounding_paper.locate import run_locate
+from notepad_grounding_paper.models import CellChoice
+from notepad_grounding_paper.models import IconDetection
+from notepad_grounding_paper.models import TargetReviewResult
 
 
 class FakeVisionClient:

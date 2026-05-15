@@ -2,15 +2,15 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from PIL import Image
-from notepad_grounding.desktop import close_active_window
-from notepad_grounding.desktop import close_window_hard
-from notepad_grounding.desktop import double_click
-from notepad_grounding.desktop import get_active_window_title
-from notepad_grounding.desktop import is_window_active
-from notepad_grounding.desktop import press_hotkey
-from notepad_grounding.desktop import sleep
-from notepad_grounding.desktop import type_text
-from notepad_grounding.models import DesktopReviewResult
+from notepad_grounding_paper.desktop import close_active_window
+from notepad_grounding_paper.desktop import close_window_hard
+from notepad_grounding_paper.desktop import double_click
+from notepad_grounding_paper.desktop import get_active_window_title
+from notepad_grounding_paper.desktop import is_window_active
+from notepad_grounding_paper.desktop import press_hotkey
+from notepad_grounding_paper.desktop import sleep
+from notepad_grounding_paper.desktop import type_text
+from notepad_grounding_paper.models import DesktopReviewResult
 
 logger = logging.getLogger(__name__)
 

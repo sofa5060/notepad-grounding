@@ -1,18 +1,18 @@
 import pytest
 from PIL import Image
 
-import notepad_grounding.models as models
-from notepad_grounding.models import CellChoice
-from notepad_grounding.models import IconDetection
-from notepad_grounding.prompts import build_bbox_initial_prompt
-from notepad_grounding.prompts import build_bbox_validation_prompt
-from notepad_grounding.prompts import build_cell_choice_prompt
-from notepad_grounding.prompts import build_choice_correction_prompt
-from notepad_grounding.prompts import build_revise_cell_choice_prompt
-from notepad_grounding.reviewers import OpenAIReviewer
-from notepad_grounding.reviewers import parse_icon_detection
-from notepad_grounding.vision import OpenAIVisionClient
-from notepad_grounding.vision import parse_cell_choice
+import notepad_grounding_paper.models as models
+from notepad_grounding_paper.models import CellChoice
+from notepad_grounding_paper.models import IconDetection
+from notepad_grounding_paper.prompts import build_bbox_initial_prompt
+from notepad_grounding_paper.prompts import build_bbox_validation_prompt
+from notepad_grounding_paper.prompts import build_cell_choice_prompt
+from notepad_grounding_paper.prompts import build_choice_correction_prompt
+from notepad_grounding_paper.prompts import build_revise_cell_choice_prompt
+from notepad_grounding_paper.reviewers import OpenAIReviewer
+from notepad_grounding_paper.reviewers import parse_icon_detection
+from notepad_grounding_paper.vision import OpenAIVisionClient
+from notepad_grounding_paper.vision import parse_cell_choice
 
 
 def test_parse_cell_choice_accepts_valid_json():

@@ -1,10 +1,10 @@
-from notepad_grounding.models import DesktopReviewResult
-from notepad_grounding.prompts import build_desktop_review_prompt
-from notepad_grounding.reviewers import OpenAIReviewer
+from notepad_grounding_paper.models import DesktopReviewResult
+from notepad_grounding_paper.prompts import build_desktop_review_prompt
+from notepad_grounding_paper.reviewers import OpenAIReviewer
 
 
 def test_review_result_model_validates():
-    from notepad_grounding.models import ReviewResultModel
+    from notepad_grounding_paper.models import ReviewResultModel
 
     model = ReviewResultModel(
         status="success",
@@ -16,7 +16,7 @@ def test_review_result_model_validates():
 
 
 def test_review_result_model_rejects_invalid_status_type():
-    from notepad_grounding.models import ReviewResultModel
+    from notepad_grounding_paper.models import ReviewResultModel
 
     # Pydantic coerces types, so this should still work
     model = ReviewResultModel(

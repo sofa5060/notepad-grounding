@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import json
 import os
-from dataclasses import asdict
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -16,7 +15,6 @@ from PIL import ImageFont
 
 QUERY = "Notepad"
 DEFAULT_MODEL = "gpt-5.4"
-OUT_DIR = Path("output/direct_llm_grounding")
 
 
 @dataclass(frozen=True)
@@ -28,28 +26,17 @@ class CoordinateGuess:
     rationale: str
 
 
-def run() -> CoordinateGuess:
-    load_env_file()
-    if not os.environ.get("OPENAI_API_KEY"):
-        raise RuntimeError("OPENAI_API_KEY is required. Add it to .env or set it in the shell.")
-
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def locate_icon(*, query: str = QUERY, output_dir: Path | None = None) -> CoordinateGuess:
     screenshot = capture_desktop()
-    screenshot_path = OUT_DIR / "screenshot.png"
-    screenshot.save(screenshot_path)
-
-    raw_response = ask_llm_for_coordinates(screenshot)
-    (OUT_DIR / "response.txt").write_text(raw_response, encoding="utf-8")
-
+    raw_response = ask_llm_for_coordinates(screenshot, query=query)
     guess = parse_coordinate_guess(raw_response, image_size=screenshot.size)
-    (OUT_DIR / "result.json").write_text(json.dumps(asdict(guess), indent=2) + "\n", encoding="utf-8")
 
-    annotated = draw_debug_box(screenshot, guess)
-    annotated.save(OUT_DIR / "annotated.png")
-    print(f"screenshot: {screenshot_path}")
-    print(f"response:   {OUT_DIR / 'response.txt'}")
-    print(f"annotated:  {OUT_DIR / 'annotated.png'}")
-    print(json.dumps(asdict(guess), indent=2))
+    if output_dir:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        screenshot.save(output_dir / "screenshot.png")
+        (output_dir / "response.txt").write_text(raw_response, encoding="utf-8")
+        draw_debug_box(screenshot, guess, query=query).save(output_dir / "annotated.png")
+
     return guess
 
 
@@ -59,7 +46,7 @@ def capture_desktop() -> Image.Image:
     return Image.frombytes("RGB", screenshot.size, screenshot.rgb)
 
 
-def ask_llm_for_coordinates(image: Image.Image) -> str:
+def ask_llm_for_coordinates(image: Image.Image, *, query: str = QUERY) -> str:
     width, height = image.size
     prompt = f"""
 You are looking at a Windows desktop screenshot.
@@ -68,7 +55,7 @@ The screenshot dimensions are exactly width={width} pixels and height={height} p
 The coordinate system starts at (0, 0) in the top-left corner.
 x increases to the right. y increases downward.
 
-Find the desktop shortcut icon for: {QUERY}
+Find the desktop shortcut icon for: {query}
 
 Return your best estimate as JSON only:
 {{
@@ -109,41 +96,25 @@ def parse_coordinate_guess(text: str, *, image_size: tuple[int, int]) -> Coordin
     return CoordinateGuess(x=x, y=y, bbox=bbox, confidence=confidence, rationale=rationale)
 
 
-def parse_bbox(
-    value: object,
-    *,
-    center: tuple[int, int],
-    image_size: tuple[int, int],
-) -> tuple[int, int, int, int]:
+def parse_bbox(value: object, *, center: tuple[int, int], image_size: tuple[int, int]) -> tuple[int, int, int, int]:
     width, height = image_size
-    if isinstance(value, dict):
-        if {"left", "top", "right", "bottom"} <= set(value):
-            left = round(float(value["left"]))
-            top = round(float(value["top"]))
-            right = round(float(value["right"]))
-            bottom = round(float(value["bottom"]))
-        elif {"x", "y", "width", "height"} <= set(value):
-            left = round(float(value["x"]))
-            top = round(float(value["y"]))
-            right = left + round(float(value["width"]))
-            bottom = top + round(float(value["height"]))
-        else:
-            left, top, right, bottom = default_bbox(center)
+    if isinstance(value, dict) and {"left", "top", "right", "bottom"} <= set(value):
+        left = round(float(value["left"]))
+        top = round(float(value["top"]))
+        right = round(float(value["right"]))
+        bottom = round(float(value["bottom"]))
     else:
-        left, top, right, bottom = default_bbox(center)
+        x, y = center
+        left, top, right, bottom = x - 40, y - 40, x + 40, y + 40
 
     left = clamp(left, 0, width - 1)
     top = clamp(top, 0, height - 1)
     right = clamp(right, 0, width - 1)
     bottom = clamp(bottom, 0, height - 1)
-    if right <= left:
-        right = min(width - 1, left + 1)
-    if bottom <= top:
-        bottom = min(height - 1, top + 1)
-    return left, top, right, bottom
+    return left, top, max(left + 1, right), max(top + 1, bottom)
 
 
-def draw_debug_box(image: Image.Image, guess: CoordinateGuess) -> Image.Image:
+def draw_debug_box(image: Image.Image, guess: CoordinateGuess, *, query: str = QUERY) -> Image.Image:
     annotated = image.convert("RGB").copy()
     draw = ImageDraw.Draw(annotated)
     font = ImageFont.load_default()
@@ -154,30 +125,23 @@ def draw_debug_box(image: Image.Image, guess: CoordinateGuess) -> Image.Image:
     draw.line((guess.x - 16, guess.y, guess.x + 16, guess.y), fill=red, width=3)
     draw.line((guess.x, guess.y - 16, guess.x, guess.y + 16), fill=red, width=3)
 
-    label = f"{QUERY} ({guess.x}, {guess.y}) conf={guess.confidence:.2f}"
-    label_left = left
-    label_top = max(0, top - 18)
-    text_box = draw.textbbox((label_left, label_top), label, font=font)
-    draw.rectangle(
-        (text_box[0] - 3, text_box[1] - 2, text_box[2] + 3, text_box[3] + 2),
-        fill=(255, 255, 255),
-    )
-    draw.text((label_left, label_top), label, fill=red, font=font)
+    label = f"{query} ({guess.x}, {guess.y}) conf={guess.confidence:.2f}"
+    text_box = draw.textbbox((left, max(0, top - 18)), label, font=font)
+    draw.rectangle((text_box[0] - 3, text_box[1] - 2, text_box[2] + 3, text_box[3] + 2), fill=(255, 255, 255))
+    draw.text((left, max(0, top - 18)), label, fill=red, font=font)
     return annotated
 
 
 def image_to_data_url(image: Image.Image) -> str:
     buffer = BytesIO()
     image.convert("RGB").save(buffer, format="PNG")
-    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
+    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('ascii')}"
 
 
 def strip_json_fence(text: str) -> str:
     stripped = text.strip()
     if not stripped.startswith("```"):
         return stripped
-
     lines = stripped.splitlines()
     if lines and lines[0].startswith("```"):
         lines = lines[1:]
@@ -186,47 +150,9 @@ def strip_json_fence(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-def default_bbox(center: tuple[int, int]) -> tuple[int, int, int, int]:
-    x, y = center
-    half_size = 40
-    return x - half_size, y - half_size, x + half_size, y + half_size
-
-
 def clamp(value: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(value, maximum))
 
 
 def clamp_float(value: float, minimum: float, maximum: float) -> float:
     return max(minimum, min(value, maximum))
-
-
-def load_env_file(path: Path | None = None) -> None:
-    env_path = path or Path.cwd() / ".env"
-    if not env_path.exists():
-        return
-
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = strip_quotes(value.strip())
-        if key and key not in os.environ:
-            os.environ[key] = value
-
-
-def strip_quotes(value: str) -> str:
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-        return value[1:-1]
-    return value
-
-
-def main() -> None:
-    from direct_llm_grounding.simple_notepad_flow import run as run_simple_notepad_flow
-
-    run_simple_notepad_flow()
-
-
-if __name__ == "__main__":
-    main()

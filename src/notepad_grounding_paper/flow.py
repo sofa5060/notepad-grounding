@@ -8,17 +8,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from notepad_grounding import desktop_interactions as steps
-from notepad_grounding.api import fetch_posts
-from notepad_grounding.capture import capture_desktop
-from notepad_grounding.desktop import clear_target_directory
-from notepad_grounding.desktop import ensure_directory
-from notepad_grounding.desktop import get_target_directory
-from notepad_grounding.locate import VisualSearchResult
-from notepad_grounding.locate import run_locate
-from notepad_grounding.models import DesktopReviewResult
-from notepad_grounding.reviewers import OpenAIReviewer
-from notepad_grounding.vision import OpenAIVisionClient
+from notepad_grounding_paper import desktop_interactions as steps
+from notepad_grounding_paper.api import fetch_posts
+from notepad_grounding_paper.capture import capture_desktop
+from notepad_grounding_paper.desktop import clear_target_directory
+from notepad_grounding_paper.desktop import ensure_directory
+from notepad_grounding_paper.desktop import get_target_directory
+from notepad_grounding_paper.locate import VisualSearchResult
+from notepad_grounding_paper.locate import run_locate
+from notepad_grounding_paper.models import DesktopReviewResult
+from notepad_grounding_paper.reviewers import OpenAIReviewer
+from notepad_grounding_paper.vision import OpenAIVisionClient
 
 logger = logging.getLogger(__name__)
 

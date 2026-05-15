@@ -1,11 +1,11 @@
 from PIL import Image
 
-from notepad_grounding.geometry import build_grid_cells
-from notepad_grounding.geometry import cell_by_id
-from notepad_grounding.geometry import offset_point
-from notepad_grounding.images import crop_around_point
-from notepad_grounding.images import draw_click_grid
-from notepad_grounding.images import draw_full_click_marker
+from notepad_grounding_paper.geometry import build_grid_cells
+from notepad_grounding_paper.geometry import cell_by_id
+from notepad_grounding_paper.geometry import offset_point
+from notepad_grounding_paper.images import crop_around_point
+from notepad_grounding_paper.images import draw_click_grid
+from notepad_grounding_paper.images import draw_full_click_marker
 
 
 def test_crop_around_point_and_offset_point_are_deterministic():

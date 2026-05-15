@@ -9,19 +9,19 @@ from pathlib import Path
 
 from PIL import Image
 
-from notepad_grounding.geometry import Box
-from notepad_grounding.geometry import GridCell
-from notepad_grounding.geometry import build_grid_cells
-from notepad_grounding.geometry import cell_by_id
-from notepad_grounding.geometry import clamp_box
-from notepad_grounding.geometry import expand_box
-from notepad_grounding.geometry import offset_point
-from notepad_grounding.images import crop_around_point
-from notepad_grounding.images import crop_box
-from notepad_grounding.images import draw_box
-from notepad_grounding.images import draw_click_grid
-from notepad_grounding.images import draw_full_click_marker
-from notepad_grounding.images import draw_grid_cells
+from notepad_grounding_paper.geometry import Box
+from notepad_grounding_paper.geometry import GridCell
+from notepad_grounding_paper.geometry import build_grid_cells
+from notepad_grounding_paper.geometry import cell_by_id
+from notepad_grounding_paper.geometry import clamp_box
+from notepad_grounding_paper.geometry import expand_box
+from notepad_grounding_paper.geometry import offset_point
+from notepad_grounding_paper.images import crop_around_point
+from notepad_grounding_paper.images import crop_box
+from notepad_grounding_paper.images import draw_box
+from notepad_grounding_paper.images import draw_click_grid
+from notepad_grounding_paper.images import draw_full_click_marker
+from notepad_grounding_paper.images import draw_grid_cells
 
 
 @dataclass(frozen=True)

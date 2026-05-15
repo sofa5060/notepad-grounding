@@ -9,20 +9,20 @@ import instructor
 from openai import OpenAI
 from PIL import Image
 
-from notepad_grounding.env import load_env_file
-from notepad_grounding.images import draw_box_on_image
-from notepad_grounding.images import image_to_data_url
-from notepad_grounding.models import DesktopReviewResult
-from notepad_grounding.models import IconDetection
-from notepad_grounding.models import ReviewResultModel
-from notepad_grounding.models import TargetReviewResult
-from notepad_grounding.models import TargetReviewResultModel
-from notepad_grounding.prompts import build_bbox_initial_prompt
-from notepad_grounding.prompts import build_bbox_validation_prompt
-from notepad_grounding.prompts import build_desktop_review_prompt
-from notepad_grounding.prompts import build_target_grid_review_prompt
-from notepad_grounding.prompts import build_target_review_prompt
-from notepad_grounding.vision import DEFAULT_OPENAI_MODEL
+from notepad_grounding_paper.env import load_env_file
+from notepad_grounding_paper.images import draw_box_on_image
+from notepad_grounding_paper.images import image_to_data_url
+from notepad_grounding_paper.models import DesktopReviewResult
+from notepad_grounding_paper.models import IconDetection
+from notepad_grounding_paper.models import ReviewResultModel
+from notepad_grounding_paper.models import TargetReviewResult
+from notepad_grounding_paper.models import TargetReviewResultModel
+from notepad_grounding_paper.prompts import build_bbox_initial_prompt
+from notepad_grounding_paper.prompts import build_bbox_validation_prompt
+from notepad_grounding_paper.prompts import build_desktop_review_prompt
+from notepad_grounding_paper.prompts import build_target_grid_review_prompt
+from notepad_grounding_paper.prompts import build_target_review_prompt
+from notepad_grounding_paper.vision import DEFAULT_OPENAI_MODEL
 
 
 class OpenAIReviewer:

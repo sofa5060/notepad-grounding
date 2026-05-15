@@ -4,13 +4,13 @@ import json
 import os
 from openai import OpenAI
 from PIL import Image
-from notepad_grounding.env import load_env_file
-from notepad_grounding.images import image_to_data_url
-from notepad_grounding.models import CellChoice
-from notepad_grounding.prompts import build_cell_choice_prompt
-from notepad_grounding.prompts import build_choice_correction_prompt
-from notepad_grounding.prompts import build_click_grid_prompt
-from notepad_grounding.prompts import build_revise_cell_choice_prompt
+from notepad_grounding_paper.env import load_env_file
+from notepad_grounding_paper.images import image_to_data_url
+from notepad_grounding_paper.models import CellChoice
+from notepad_grounding_paper.prompts import build_cell_choice_prompt
+from notepad_grounding_paper.prompts import build_choice_correction_prompt
+from notepad_grounding_paper.prompts import build_click_grid_prompt
+from notepad_grounding_paper.prompts import build_revise_cell_choice_prompt
 
 DEFAULT_OPENAI_MODEL = "gpt-5.4"
 
