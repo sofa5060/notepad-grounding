@@ -16,7 +16,7 @@ The system uses LLM vision to locate desktop icons without accessibility APIs, w
 1. Capture a full desktop screenshot (1920x1080)
 2. Send it to the LLM with a prompt describing the target icon
 3. LLM returns structured JSON via `text_format` with Pydantic schema validation
-4. Confidence gating: minimum 0.7 confidence required; up to 3 retries with 1s delays on low confidence or API errors
+4. Confidence gating: minimum 0.85 confidence required; up to 3 retries with 1s delays on low confidence or API errors. If all attempts are below threshold, the run is skipped entirely (no click occurs).
 5. Result includes center point (x, y) and bounding box, both clamped to screen dimensions
 6. Annotated screenshot saved showing bounding box, crosshair, and confidence
 
@@ -34,8 +34,8 @@ The system uses LLM vision to locate desktop icons without accessibility APIs, w
 
 | Scenario | Handling |
 |----------|----------|
-| Icon not found / low confidence | Retry up to 3 times, 1s delay |
-| API unavailable (fetching posts) | Retry up to 3 times, 5s delay; fallback to dummy data |
+| Icon not found / low confidence | Retry up to 3 times, 1s delay; skip run if still below 0.85 |
+| API unavailable (fetching posts) | Retry up to 3 times, 5s delay; graceful fallback to dummy data |
 | Window fails to open | Timeout after 8 seconds |
 | Close fails (Ctrl+Shift+W) | Alt+F4 fallback |
 | Existing files in target directory | Directory cleaned before each run |
