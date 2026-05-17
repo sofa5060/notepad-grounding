@@ -40,8 +40,8 @@ def build_locate_prompt(*, query: str, width: int, height: int) -> str:
         You are looking at a Windows desktop screenshot.
         Dimensions: width={width}, height={height}. Coordinates start at the top-left.
 
-        Find this desktop icon/shortcut: {query}
-        Match mainly by the icon's visual appearance; the label text may be different.
+        Locate this desktop icon/shortcut: {query}
+        Follow the target description when deciding whether to use label text or visual icon appearance.
 
         Use x and y for the center of the icon graphic.
         Use bbox for only the visible icon graphic area, not the text label.

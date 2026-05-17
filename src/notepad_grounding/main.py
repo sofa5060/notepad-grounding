@@ -11,10 +11,11 @@ from notepad_grounding.automation import automate_post
 from notepad_grounding.llm import locate_icon
 
 QUERY = (
-    "Windows Notepad desktop shortcut icon. Match the Notepad icon by visual "
-    "appearance even if the visible desktop label is different."
+    "Find the Windows Notepad desktop shortcut. First look for a label named "
+    "Notepad; if the label is different, identify it visually by the Notepad icon."
 )
 RUNS = 10
+POST_ATTEMPTS = 3
 DELAY_BETWEEN_RUNS_SECONDS = 5
 OUTPUT_DIR = Path("output/notepad_grounding")
 
@@ -42,19 +43,25 @@ def main() -> None:
 
     posts = fetch_posts(limit=RUNS)
     for index, post in enumerate(posts, start=1):
-        run_output_dir = OUTPUT_DIR / f"{index:02d}"
-        logger.info("[%d/%d] locating %s", index, len(posts), QUERY)
+        full_path = None
+        for attempt in range(1, POST_ATTEMPTS + 1):
+            run_output_dir = OUTPUT_DIR / f"{index:02d}" / f"attempt_{attempt:02d}"
+            logger.info("[%d/%d attempt %d/%d] locating %s", index, len(posts), attempt, POST_ATTEMPTS, QUERY)
 
-        coordinates = locate_icon(query=QUERY, output_dir=run_output_dir)
-        if coordinates is None:
-            logger.warning("[%d/%d] could not locate %s with sufficient confidence, skipping",
-                           index, len(posts), QUERY)
-            continue
-        logger.info("double-clicking %s at (%d, %d)", QUERY, coordinates.x, coordinates.y)
-        try:
-            full_path = automate_post(post=post, index=index, target_dir=target_dir, click_x=coordinates.x, click_y=coordinates.y)
-        except NotepadOpenTimeoutError as exc:
-            logger.warning("[%d/%d] %s, skipping", index, len(posts), exc)
+            coordinates = locate_icon(query=QUERY, output_dir=run_output_dir)
+            if coordinates is None:
+                logger.warning("[%d/%d attempt %d/%d] could not locate %s with sufficient confidence",
+                               index, len(posts), attempt, POST_ATTEMPTS, QUERY)
+                continue
+            logger.info("double-clicking %s at (%d, %d)", QUERY, coordinates.x, coordinates.y)
+            try:
+                full_path = automate_post(post=post, index=index, target_dir=target_dir, click_x=coordinates.x, click_y=coordinates.y)
+                break
+            except NotepadOpenTimeoutError as exc:
+                logger.warning("[%d/%d attempt %d/%d] %s", index, len(posts), attempt, POST_ATTEMPTS, exc)
+
+        if full_path is None:
+            logger.warning("[%d/%d] failed after %d attempts, skipping", index, len(posts), POST_ATTEMPTS)
             continue
         logger.info("saved to %s", full_path)
         
