@@ -45,20 +45,20 @@ def main() -> None:
     for index, post in enumerate(posts, start=1):
         full_path = None
         for attempt in range(1, POST_ATTEMPTS + 1):
-            run_output_dir = OUTPUT_DIR / f"{index:02d}" / f"attempt_{attempt:02d}"
-            logger.info("[%d/%d attempt %d/%d] locating %s", index, len(posts), attempt, POST_ATTEMPTS, QUERY)
+            run_output_dir = OUTPUT_DIR / f"post_{index:02d}" / f"run_{attempt:02d}"
+            logger.info("[%d/%d run %d/%d] locating %s", index, len(posts), attempt, POST_ATTEMPTS, QUERY)
 
             coordinates = locate_icon(query=QUERY, output_dir=run_output_dir)
             if coordinates is None:
-                logger.warning("[%d/%d attempt %d/%d] could not locate %s with sufficient confidence",
-                               index, len(posts), attempt, POST_ATTEMPTS, QUERY)
+                logger.warning("[%d/%d run %d/%d] locate attempt failed",
+                               index, len(posts), attempt, POST_ATTEMPTS)
                 continue
             logger.info("double-clicking %s at (%d, %d)", QUERY, coordinates.x, coordinates.y)
             try:
                 full_path = automate_post(post=post, index=index, target_dir=target_dir, click_x=coordinates.x, click_y=coordinates.y)
                 break
             except NotepadOpenTimeoutError as exc:
-                logger.warning("[%d/%d attempt %d/%d] %s", index, len(posts), attempt, POST_ATTEMPTS, exc)
+                logger.warning("[%d/%d run %d/%d] %s", index, len(posts), attempt, POST_ATTEMPTS, exc)
 
         if full_path is None:
             logger.warning("[%d/%d] failed after %d attempts, skipping", index, len(posts), POST_ATTEMPTS)

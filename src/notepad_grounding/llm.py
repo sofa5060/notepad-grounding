@@ -2,7 +2,6 @@ from __future__ import annotations
 import base64
 import logging
 import os
-import time
 from io import BytesIO
 from pathlib import Path
 import mss
@@ -13,8 +12,6 @@ from PIL import ImageFont
 from pydantic import BaseModel, Field
 
 DEFAULT_MODEL = "gpt-5.4"
-MAX_RETRIES = 3
-RETRY_DELAY_SECONDS = 1.0
 MIN_CONFIDENCE = 0.85
 
 logger = logging.getLogger(__name__)
@@ -60,44 +57,30 @@ def locate_icon(*, query: str, output_dir: Path) -> IconLocation | None:
     image.convert("RGB").save(buffer, format="PNG")
     image_url = f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('ascii')}"
 
-    raw = None
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            response = OpenAI().responses.parse(
-                model=os.environ.get("OPENAI_MODEL", DEFAULT_MODEL),
-                input=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "input_text", "text": prompt},
-                            {"type": "input_image", "image_url": image_url, "detail": "high"},
-                        ],
-                    }
-                ],
-                text_format=IconLocation,
-            )
-            raw = response.output_parsed
-        except Exception as exc:
-            logger.warning("attempt %d/%d: API error — %s", attempt, MAX_RETRIES, exc)
-            if attempt < MAX_RETRIES:
-                time.sleep(RETRY_DELAY_SECONDS)
-            continue
-
-        logger.info("attempt %d/%d: confidence=%.2f", attempt, MAX_RETRIES, raw.confidence)
-        if raw.confidence >= MIN_CONFIDENCE:
-            break
-
-        if attempt < MAX_RETRIES:
-            logger.info("confidence below threshold (%.2f < %.2f), retrying in %ds",
-                        raw.confidence, MIN_CONFIDENCE, RETRY_DELAY_SECONDS)
-            time.sleep(RETRY_DELAY_SECONDS)
-
+    try:
+        response = OpenAI().responses.parse(
+            model=os.environ.get("OPENAI_MODEL", DEFAULT_MODEL),
+            input=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": prompt},
+                        {"type": "input_image", "image_url": image_url, "detail": "high"},
+                    ],
+                }
+            ],
+            text_format=IconLocation,
+        )
+        raw = response.output_parsed
+    except Exception as exc:
+        logger.warning("LLM locate attempt failed: %s", exc)
+        return None
     if raw is None:
-        raise RuntimeError(f"Failed to locate {query} after {MAX_RETRIES} attempts")
+        logger.warning("LLM locate attempt returned no parsed result")
+        return None
 
     if raw.confidence < MIN_CONFIDENCE:
-        logger.warning("all %d attempts below confidence threshold (best=%.2f < %.2f)",
-                       MAX_RETRIES, raw.confidence, MIN_CONFIDENCE)
+        logger.warning("confidence below threshold (%.2f < %.2f)", raw.confidence, MIN_CONFIDENCE)
         return None
 
     x = max(0, min(raw.x, width - 1))
