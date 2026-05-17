@@ -17,11 +17,19 @@ PATH_TYPE_INTERVAL_SECONDS = 0.01
 logger = logging.getLogger(__name__)
 
 
+class NotepadOpenTimeoutError(RuntimeError):
+    pass
+
+
 def click_icon(*, x: int, y: int) -> None:
     before_windows = visible_window_handles()
     pyautogui.moveTo(x, y, duration=0.3)
     pyautogui.doubleClick()
-    wait_for_visible_window_change(before_windows, action="open", timeout_seconds=WINDOW_OPEN_TIMEOUT_SECONDS)
+    opened = wait_for_visible_window_change(before_windows, action="open", timeout_seconds=WINDOW_OPEN_TIMEOUT_SECONDS)
+    if before_windows is not None and not opened:
+        raise NotepadOpenTimeoutError(
+            f"Timed out after {WINDOW_OPEN_TIMEOUT_SECONDS:.1f}s waiting for Notepad to open"
+        )
 
 
 def type_content(*, content: str) -> None:

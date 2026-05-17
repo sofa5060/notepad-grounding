@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from dotenv import load_dotenv
 from notepad_grounding.api import fetch_posts
+from notepad_grounding.automation import NotepadOpenTimeoutError
 from notepad_grounding.automation import automate_post
 from notepad_grounding.llm import locate_icon
 
@@ -50,7 +51,11 @@ def main() -> None:
                            index, len(posts), QUERY)
             continue
         logger.info("double-clicking %s at (%d, %d)", QUERY, coordinates.x, coordinates.y)
-        full_path = automate_post(post=post, index=index, target_dir=target_dir, click_x=coordinates.x, click_y=coordinates.y)
+        try:
+            full_path = automate_post(post=post, index=index, target_dir=target_dir, click_x=coordinates.x, click_y=coordinates.y)
+        except NotepadOpenTimeoutError as exc:
+            logger.warning("[%d/%d] %s, skipping", index, len(posts), exc)
+            continue
         logger.info("saved to %s", full_path)
         
         # Wait a bit before the next run to allow for moving the icon if needed
