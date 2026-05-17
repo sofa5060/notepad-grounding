@@ -9,7 +9,10 @@ from notepad_grounding.api import fetch_posts
 from notepad_grounding.automation import automate_post
 from notepad_grounding.llm import locate_icon
 
-QUERY = "Notepad"
+QUERY = (
+    "Windows Notepad desktop shortcut icon. Match the Notepad icon by visual "
+    "appearance even if the visible desktop label is different."
+)
 RUNS = 10
 DELAY_BETWEEN_RUNS_SECONDS = 5
 OUTPUT_DIR = Path("output/notepad_grounding")

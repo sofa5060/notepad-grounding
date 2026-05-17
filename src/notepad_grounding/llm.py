@@ -35,23 +35,26 @@ class IconLocation(BaseModel):
     rationale: str = Field(description="Short explanation of the location choice")
 
 
+def build_locate_prompt(*, query: str, width: int, height: int) -> str:
+    return f"""
+        You are looking at a Windows desktop screenshot.
+        Dimensions: width={width}, height={height}. Coordinates start at the top-left.
+
+        Find this desktop icon/shortcut: {query}
+        Match mainly by the icon's visual appearance; the label text may be different.
+
+        Use x and y for the center of the icon graphic.
+        Use bbox for only the visible icon graphic area, not the text label.
+    """.strip()
+
+
 def locate_icon(*, query: str, output_dir: Path) -> IconLocation | None:
     with mss.MSS() as screen_capture:
         screenshot = screen_capture.grab(screen_capture.monitors[1])
     image = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
     width, height = image.size
 
-    prompt = f"""
-        You are looking at a Windows desktop screenshot.
-
-        The screenshot dimensions are exactly width={width} pixels and height={height} pixels.
-        The coordinate system starts at (0, 0) in the top-left corner.
-        x increases to the right. y increases downward.
-
-        Find the desktop shortcut icon for: {query}
-
-        Use x and y for the center of the icon graphic. Use bbox for the visible icon graphic area.
-    """.strip()
+    prompt = build_locate_prompt(query=query, width=width, height=height)
 
     buffer = BytesIO()
     image.convert("RGB").save(buffer, format="PNG")
