@@ -39,7 +39,8 @@ def main() -> None:
 
     # Ensure output and target directories exist and are clean
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    target_dir = Path.home() / "Desktop" / "tjm-project"
+    # target_dir = Path.home() / "Desktop" / "tjm-project"
+    target_dir = Path("C:/Mac/Home/Desktop/tjm-project")
     logger.info("clearing notes folder: %s", target_dir)
     reset_target_directory(target_dir)
 
