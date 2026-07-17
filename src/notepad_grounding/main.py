@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from dotenv import load_dotenv
 from notepad_grounding.api import fetch_posts
+from notepad_grounding.automation import AppOpenVerificationError
 from notepad_grounding.automation import NotepadOpenTimeoutError
 from notepad_grounding.automation import automate_post
 from notepad_grounding.llm import locate_icon
@@ -14,6 +15,7 @@ QUERY = (
     "Find the Windows Notepad desktop shortcut. First look for a label named "
     "Notepad; if the label is different, identify it visually by the Notepad icon."
 )
+EXPECTED_APP = "Windows Notepad"
 RUNS = 10
 POST_ATTEMPTS = 3
 DELAY_BETWEEN_RUNS_SECONDS = 5
@@ -55,9 +57,17 @@ def main() -> None:
                 continue
             logger.info("double-clicking %s at (%d, %d)", QUERY, coordinates.x, coordinates.y)
             try:
-                full_path = automate_post(post=post, index=index, target_dir=target_dir, click_x=coordinates.x, click_y=coordinates.y)
+                full_path = automate_post(
+                    post=post,
+                    index=index,
+                    target_dir=target_dir,
+                    click_x=coordinates.x,
+                    click_y=coordinates.y,
+                    expected_app=EXPECTED_APP,
+                    output_dir=run_output_dir,
+                )
                 break
-            except NotepadOpenTimeoutError as exc:
+            except (NotepadOpenTimeoutError, AppOpenVerificationError) as exc:
                 logger.warning("[%d/%d run %d/%d] %s", index, len(posts), attempt, POST_ATTEMPTS, exc)
 
         if full_path is None:

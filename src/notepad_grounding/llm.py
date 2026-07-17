@@ -32,6 +32,22 @@ class IconLocation(BaseModel):
     rationale: str = Field(description="Short explanation of the location choice")
 
 
+class AppOpenReview(BaseModel):
+    opened_expected_app: bool
+
+
+def capture_desktop() -> Image.Image:
+    with mss.MSS() as screen_capture:
+        screenshot = screen_capture.grab(screen_capture.monitors[1])
+    return Image.frombytes("RGB", screenshot.size, screenshot.rgb)
+
+
+def _image_url(image: Image.Image) -> str:
+    buffer = BytesIO()
+    image.convert("RGB").save(buffer, format="PNG")
+    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('ascii')}"
+
+
 def build_locate_prompt(*, query: str, width: int, height: int) -> str:
     return f"""
         You are looking at a Windows desktop screenshot.
@@ -46,16 +62,10 @@ def build_locate_prompt(*, query: str, width: int, height: int) -> str:
 
 
 def locate_icon(*, query: str, output_dir: Path) -> IconLocation | None:
-    with mss.MSS() as screen_capture:
-        screenshot = screen_capture.grab(screen_capture.monitors[1])
-    image = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
+    image = capture_desktop()
     width, height = image.size
 
     prompt = build_locate_prompt(query=query, width=width, height=height)
-
-    buffer = BytesIO()
-    image.convert("RGB").save(buffer, format="PNG")
-    image_url = f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('ascii')}"
 
     try:
         response = OpenAI().responses.parse(
@@ -65,7 +75,7 @@ def locate_icon(*, query: str, output_dir: Path) -> IconLocation | None:
                     "role": "user",
                     "content": [
                         {"type": "input_text", "text": prompt},
-                        {"type": "input_image", "image_url": image_url, "detail": "high"},
+                        {"type": "input_image", "image_url": _image_url(image), "detail": "high"},
                     ],
                 }
             ],
@@ -101,6 +111,43 @@ def locate_icon(*, query: str, output_dir: Path) -> IconLocation | None:
     save_artifacts(image=image, result=result, query=query, output_dir=output_dir)
 
     return result
+
+
+def verify_app_opened(
+    *,
+    expected_app: str,
+    before_image: Image.Image,
+    after_image: Image.Image,
+) -> AppOpenReview | None:
+    prompt = (
+        f"Compare the desktop immediately before and after a double-click intended to open {expected_app}. "
+        f"Set opened_expected_app to true only if the after screenshot shows {expected_app} newly opened. "
+        "If another app opened or the evidence is uncertain, set it to false."
+    )
+    try:
+        response = OpenAI().responses.parse(
+            model=os.environ.get("OPENAI_MODEL", DEFAULT_MODEL),
+            input=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": prompt},
+                        {"type": "input_text", "text": "Before screenshot:"},
+                        {"type": "input_image", "image_url": _image_url(before_image), "detail": "high"},
+                        {"type": "input_text", "text": "After screenshot:"},
+                        {"type": "input_image", "image_url": _image_url(after_image), "detail": "high"},
+                    ],
+                }
+            ],
+            text_format=AppOpenReview,
+        )
+    except Exception as exc:
+        logger.warning("LLM app-open verification failed: %s", exc)
+        return None
+
+    if response.output_parsed is None:
+        logger.warning("LLM app-open verification returned no parsed result")
+    return response.output_parsed
 
 
 def save_artifacts(*, image: Image.Image, result: IconLocation, query: str, output_dir: Path) -> None:
