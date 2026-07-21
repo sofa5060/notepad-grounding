@@ -82,9 +82,7 @@ def _run_automation_flow(
     posts = fetch_posts(limit=post_limit)
     logger.info("Fetched %d posts", len(posts))
 
-    target_dir = steps.get_target_directory()
-    steps.ensure_directory(target_dir)
-    steps.clear_target_directory()
+    target_dir = steps.prepare_target_directory()
 
     post_results: list[PostResult] = []
     succeeded = 0

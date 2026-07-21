@@ -68,14 +68,12 @@ def test_run_flow_run_mode_processes_posts_and_actions(tmp_path):
         patch("notepad_grounding_paper.flow.fetch_posts", return_value=posts),
         patch("notepad_grounding_paper.desktop.capture_desktop", return_value=mock_image),
         patch("notepad_grounding_paper.flow.run_locate", return_value=FakeLocateResult()),
-        patch("notepad_grounding_paper.desktop.ensure_directory") as mock_ensure,
-        patch("notepad_grounding_paper.desktop.clear_target_directory") as mock_clear,
-        patch("notepad_grounding_paper.desktop.get_target_directory", return_value=tmp_path),
+        patch("notepad_grounding_paper.desktop.prepare_target_directory", return_value=tmp_path) as mock_prepare,
         patch("notepad_grounding_paper.desktop.double_click") as mock_click,
         patch("notepad_grounding_paper.desktop.type_text") as mock_type,
         patch("notepad_grounding_paper.desktop.press_hotkey") as mock_hotkey,
         patch("notepad_grounding_paper.desktop.sleep"),
-        patch("notepad_grounding_paper.desktop.is_window_active", return_value=True),
+        patch("notepad_grounding_paper.desktop.pyautogui.getActiveWindowTitle", create=True, return_value="Untitled - Notepad"),
     ):
         result = run_flow(
             mode="run",
@@ -89,8 +87,7 @@ def test_run_flow_run_mode_processes_posts_and_actions(tmp_path):
     assert result.total_posts == 2
     assert result.succeeded == 2
     assert result.failed == 0
-    mock_ensure.assert_called_once_with(tmp_path)
-    mock_clear.assert_called_once()
+    mock_prepare.assert_called_once()
     assert mock_click.call_count == 2
     mock_type.assert_called()
     mock_hotkey.assert_called()
@@ -113,14 +110,12 @@ def test_run_flow_retries_failed_post_attempts(tmp_path):
         patch("notepad_grounding_paper.flow.fetch_posts", return_value=posts),
         patch("notepad_grounding_paper.desktop.capture_desktop", return_value=mock_image),
         patch("notepad_grounding_paper.flow.run_locate", side_effect=flaky_locate),
-        patch("notepad_grounding_paper.desktop.ensure_directory"),
-        patch("notepad_grounding_paper.desktop.clear_target_directory"),
-        patch("notepad_grounding_paper.desktop.get_target_directory", return_value=tmp_path),
+        patch("notepad_grounding_paper.desktop.prepare_target_directory", return_value=tmp_path),
         patch("notepad_grounding_paper.desktop.double_click") as mock_click,
         patch("notepad_grounding_paper.desktop.type_text") as mock_type,
         patch("notepad_grounding_paper.desktop.press_hotkey") as mock_hotkey,
         patch("notepad_grounding_paper.desktop.sleep"),
-        patch("notepad_grounding_paper.desktop.is_window_active", return_value=True),
+        patch("notepad_grounding_paper.desktop.pyautogui.getActiveWindowTitle", create=True, return_value="Untitled - Notepad"),
     ):
         result = run_flow(
             mode="run",
@@ -150,9 +145,7 @@ def test_run_flow_records_failure_after_max_retries(tmp_path):
         patch("notepad_grounding_paper.flow.fetch_posts", return_value=posts),
         patch("notepad_grounding_paper.desktop.capture_desktop", return_value=mock_image),
         patch("notepad_grounding_paper.flow.run_locate", side_effect=RuntimeError("Always fails")),
-        patch("notepad_grounding_paper.desktop.ensure_directory"),
-        patch("notepad_grounding_paper.desktop.clear_target_directory"),
-        patch("notepad_grounding_paper.desktop.get_target_directory", return_value=tmp_path),
+        patch("notepad_grounding_paper.desktop.prepare_target_directory", return_value=tmp_path),
         patch("notepad_grounding_paper.desktop.double_click") as mock_click,
         patch("notepad_grounding_paper.desktop.type_text") as mock_type,
         patch("notepad_grounding_paper.desktop.press_hotkey") as mock_hotkey,
