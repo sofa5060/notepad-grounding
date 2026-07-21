@@ -21,20 +21,12 @@ def test_target_review_result_accepts_true_false_verdicts():
     assert rejected.contains_target is False
 
 
-def test_resolve_openai_reviewer_model_prefers_reviewer_then_legacy_judge_then_openai(monkeypatch):
-    monkeypatch.delenv("OPENAI_REVIEWER_MODEL", raising=False)
-    monkeypatch.delenv("OPENAI_JUDGE_MODEL", raising=False)
+def test_resolve_openai_reviewer_model_uses_openai_model(monkeypatch):
     monkeypatch.delenv("OPENAI_MODEL", raising=False)
     assert resolve_openai_reviewer_model() == "gpt-5.4"
 
     monkeypatch.setenv("OPENAI_MODEL", "chooser-model")
     assert resolve_openai_reviewer_model() == "chooser-model"
-
-    monkeypatch.setenv("OPENAI_JUDGE_MODEL", "judge-model")
-    assert resolve_openai_reviewer_model() == "judge-model"
-
-    monkeypatch.setenv("OPENAI_REVIEWER_MODEL", "reviewer-model")
-    assert resolve_openai_reviewer_model() == "reviewer-model"
 
     assert resolve_openai_reviewer_model("explicit") == "explicit"
 

@@ -5,7 +5,6 @@ import os
 from dataclasses import asdict
 from pathlib import Path
 
-import instructor
 from openai import OpenAI
 from PIL import Image
 
@@ -33,7 +32,6 @@ class OpenAIReviewer:
         if not os.environ.get("OPENAI_API_KEY"):
             raise RuntimeError("OPENAI_API_KEY is required. Add it to .env or set it in the shell.")
         self._client = OpenAI()
-        self._structured_client = instructor.from_openai(self._client)
         self._model = resolve_openai_reviewer_model(model)
 
     def review_target_crop(self, *, query: str, image: Image.Image) -> TargetReviewResult:
@@ -193,22 +191,20 @@ class OpenAIReviewer:
         return detection
 
     def _ask_structured_reviewer(self, *, prompt: str, image: Image.Image, response_model):
-        return self._structured_client.chat.completions.create(
+        response = self._client.responses.parse(
             model=self._model,
-            response_model=response_model,
-            messages=[
+            input=[
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": image_to_data_url(image), "detail": "high"},
-                        },
+                        {"type": "input_text", "text": prompt},
+                        {"type": "input_image", "image_url": image_to_data_url(image), "detail": "high"},
                     ],
                 }
             ],
+            text_format=response_model,
         )
+        return response.output_parsed
 
 
 def _write_bbox_debug_json(debug_dir: Path | None, filename: str, payload: dict) -> None:
@@ -253,10 +249,4 @@ def _load_json(text: str) -> dict:
 
 
 def resolve_openai_reviewer_model(model: str | None = None) -> str:
-    return (
-        model
-        or os.environ.get("OPENAI_REVIEWER_MODEL")
-        or os.environ.get("OPENAI_JUDGE_MODEL")
-        or os.environ.get("OPENAI_MODEL")
-        or DEFAULT_OPENAI_MODEL
-    )
+    return model or os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
