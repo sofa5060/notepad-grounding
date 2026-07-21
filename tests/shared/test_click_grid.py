@@ -1,8 +1,8 @@
 from PIL import Image
 
-from notepad_grounding_paper.geometry import build_grid_cells
-from notepad_grounding_paper.geometry import cell_by_id
-from notepad_grounding_paper.geometry import offset_point
+from notepad_grounding_paper.images import build_grid_cells
+from notepad_grounding_paper.images import cell_by_id
+from notepad_grounding_paper.images import offset_point
 from notepad_grounding_paper.images import crop_around_point
 from notepad_grounding_paper.images import draw_click_grid
 from notepad_grounding_paper.images import draw_full_click_marker

@@ -1,7 +1,7 @@
 import pytest
 
-from notepad_grounding_paper import cli
-from notepad_grounding_paper.cli import build_parser
+from notepad_grounding_paper import main as cli
+from notepad_grounding_paper.main import build_parser
 
 
 def test_main_delegates_to_start_flow(monkeypatch):

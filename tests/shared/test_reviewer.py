@@ -1,6 +1,6 @@
 from notepad_grounding_paper.models import DesktopReviewResult
 from notepad_grounding_paper.prompts import build_desktop_review_prompt
-from notepad_grounding_paper.reviewers import OpenAIReviewer
+from notepad_grounding_paper.llm import OpenAIReviewer
 
 
 def test_review_result_model_validates():

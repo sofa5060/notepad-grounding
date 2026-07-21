@@ -1,8 +1,25 @@
 from __future__ import annotations
 
+import logging
 import platform
 import time
 from pathlib import Path
+
+from PIL import Image
+
+logger = logging.getLogger(__name__)
+
+
+def capture_desktop(*, monitor_index: int = 1) -> Image.Image:
+    import mss
+
+    with mss.MSS() as screen_capture:
+        monitors = screen_capture.monitors
+        if monitor_index >= len(monitors):
+            raise RuntimeError(f"Monitor {monitor_index} is unavailable; found {len(monitors) - 1}.")
+        screenshot = screen_capture.grab(monitors[monitor_index])
+
+    return Image.frombytes("RGB", screenshot.size, screenshot.rgb)
 
 
 def double_click(x: int, y: int, *, duration: float = 0.5) -> None:
@@ -56,11 +73,6 @@ def get_target_directory() -> Path:
     return get_desktop_path() / "tjm-project"
 
 
-def file_exists(filename: str) -> bool:
-    """Check if a file already exists in the target directory."""
-    return (get_target_directory() / filename).exists()
-
-
 def clear_target_directory() -> None:
     """Remove all files from the target directory to avoid replace dialogs."""
     target = get_target_directory()
@@ -91,38 +103,6 @@ def is_window_active(title_substring: str) -> bool:
     return title_substring.lower() in active.lower()
 
 
-def wait_for_window(title_substring: str, *, timeout: float = 5.0, poll_interval: float = 0.5) -> bool:
-    """Wait until a window with the given title substring becomes active.
-
-    Returns True if found, False if timeout exceeded.
-    """
-    import pyautogui
-
-    elapsed = 0.0
-    while elapsed < timeout:
-        active = get_active_window_title()
-        if active and title_substring.lower() in active.lower():
-            return True
-        time.sleep(poll_interval)
-        elapsed += poll_interval
-    return False
-
-
-def wait_for_window_close(title_substring: str, *, timeout: float = 5.0, poll_interval: float = 0.5) -> bool:
-    """Wait until a window with the given title substring is no longer active.
-
-    Returns True if closed, False if timeout exceeded.
-    """
-    elapsed = 0.0
-    while elapsed < timeout:
-        active = get_active_window_title()
-        if active is None or title_substring.lower() not in active.lower():
-            return True
-        time.sleep(poll_interval)
-        elapsed += poll_interval
-    return False
-
-
 def close_active_window() -> None:
     """Close the currently active window using Ctrl+W (or Cmd+W on macOS)."""
     press_hotkey("ctrl", "w")
@@ -147,11 +127,41 @@ def close_window_hard() -> None:
     sleep(0.5)
 
 
-def click_at(x: int, y: int, *, clicks: int = 1, duration: float = 0.5) -> None:
-    """Click at screen coordinates."""
-    import pyautogui
-    pyautogui.moveTo(x, y, duration=duration)
-    if clicks == 2:
-        pyautogui.doubleClick()
+def handle_recovery(action_needed: str) -> None:
+    action_lower = action_needed.lower()
+
+    if "close" in action_lower and "window" in action_lower:
+        logger.info("[RECOVER] Closing active window")
+        close_active_window()
+        sleep(1.0)
+    elif "click" in action_lower and "replace" in action_lower:
+        logger.info("[RECOVER] Clicking Replace button (Enter)")
+        press_hotkey("return")
+        sleep(1.0)
+    elif "click" in action_lower and "yes" in action_lower:
+        logger.info("[RECOVER] Clicking Yes button (Enter)")
+        press_hotkey("return")
+        sleep(1.0)
+    elif "wait" in action_lower:
+        logger.info("[RECOVER] Waiting longer")
+        sleep(2.0)
     else:
-        pyautogui.click()
+        logger.info("[RECOVER] Generic recovery: %s", action_needed)
+        sleep(1.0)
+
+
+def save_post_file(*, full_path: Path) -> None:
+    press_hotkey("ctrl", "shift", "s")
+    sleep(1.5)
+    type_text(str(full_path), interval=0.01)
+    sleep(0.5)
+    press_hotkey("return")
+    sleep(1.0)
+
+
+def close_notepad() -> None:
+    if not is_window_active("Notepad"):
+        active = get_active_window_title()
+        raise RuntimeError(f"Notepad not active before close. Current: {active!r}")
+    press_hotkey("ctrl", "shift", "w")
+    sleep(1.0)

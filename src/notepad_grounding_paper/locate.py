@@ -3,95 +3,29 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import asdict
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 from PIL import Image
 
-from notepad_grounding_paper.geometry import Box
-from notepad_grounding_paper.geometry import GridCell
-from notepad_grounding_paper.geometry import build_grid_cells
-from notepad_grounding_paper.geometry import cell_by_id
-from notepad_grounding_paper.geometry import clamp_box
-from notepad_grounding_paper.geometry import expand_box
-from notepad_grounding_paper.geometry import offset_point
+from notepad_grounding_paper.images import Box
+from notepad_grounding_paper.images import GridCell
+from notepad_grounding_paper.images import build_grid_cells
+from notepad_grounding_paper.images import cell_by_id
+from notepad_grounding_paper.images import clamp_box
+from notepad_grounding_paper.images import expand_box
+from notepad_grounding_paper.images import offset_point
 from notepad_grounding_paper.images import crop_around_point
 from notepad_grounding_paper.images import crop_box
 from notepad_grounding_paper.images import draw_box
 from notepad_grounding_paper.images import draw_click_grid
 from notepad_grounding_paper.images import draw_full_click_marker
 from notepad_grounding_paper.images import draw_grid_cells
-
-
-@dataclass(frozen=True)
-class TargetReviewAttempt:
-    attempt_index: int
-    selected_cell_id: str
-    selected_box: Box
-    reviewed_crop_box: Box
-    crop_image: str
-    contains_target: bool
-    confidence: float
-    rationale: str
-    visible_evidence: str
-
-
-@dataclass(frozen=True)
-class VisualSearchStep:
-    round_index: int
-    crop_box: Box
-    selected_cell_id: str
-    selected_box: Box
-    confidence: float
-    rationale: str
-    grid_image: str
-    review_attempts: list[TargetReviewAttempt]
-
-
-@dataclass(frozen=True)
-class FinalDetectionStep:
-    crop_box: Box
-    icon_bbox_local: Box
-    icon_bbox_screen: Box
-    confidence: float
-    rationale: str
-    crop_image: str
-    detection_image: str
-
-
-@dataclass(frozen=True)
-class FinalClickPointStep:
-    crop_box: Box
-    coarse_point_id: str
-    fine_point_id: str
-    crop_point: tuple[int, int]
-    screen_point: tuple[int, int]
-    first_overlay_image: str
-    first_result_json: str
-    refinement_crop_box: Box
-    refinement_crop_image: str
-    second_overlay_image: str
-    second_result_json: str
-    final_image: str
-    full_image: str
-    result_json: str
-    confidence: float
-    rationale: str
-
-
-@dataclass(frozen=True)
-class VisualSearchResult:
-    query: str
-    center: tuple[int, int]
-    final_box: Box
-    steps: list[VisualSearchStep]
-    final_method: str
-    final_detection: FinalDetectionStep | None
-    final_click_point: FinalClickPointStep | None
-    output_dir: str
-    result_json: str
-    elapsed_seconds: float
+from notepad_grounding_paper.models import FinalClickPointStep
+from notepad_grounding_paper.models import FinalDetectionStep
+from notepad_grounding_paper.models import TargetReviewAttempt
+from notepad_grounding_paper.models import VisualSearchResult
+from notepad_grounding_paper.models import VisualSearchStep
 
 
 def run_locate(

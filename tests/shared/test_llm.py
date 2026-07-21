@@ -9,10 +9,10 @@ from notepad_grounding_paper.prompts import build_bbox_validation_prompt
 from notepad_grounding_paper.prompts import build_cell_choice_prompt
 from notepad_grounding_paper.prompts import build_choice_correction_prompt
 from notepad_grounding_paper.prompts import build_revise_cell_choice_prompt
-from notepad_grounding_paper.reviewers import OpenAIReviewer
-from notepad_grounding_paper.reviewers import parse_icon_detection
-from notepad_grounding_paper.vision import OpenAIVisionClient
-from notepad_grounding_paper.vision import parse_cell_choice
+from notepad_grounding_paper.llm import OpenAIReviewer
+from notepad_grounding_paper.llm import parse_icon_detection
+from notepad_grounding_paper.llm import OpenAIVisionClient
+from notepad_grounding_paper.llm import parse_cell_choice
 
 
 def test_parse_cell_choice_accepts_valid_json():

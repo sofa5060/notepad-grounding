@@ -9,31 +9,17 @@ from openai import OpenAI
 from PIL import Image
 from PIL import ImageDraw
 from PIL import ImageFont
-from pydantic import BaseModel, Field
+
+from notepad_grounding.models import AppOpenReview
+from notepad_grounding.models import IconBBox
+from notepad_grounding.models import IconLocation
+from notepad_grounding.prompts import build_app_open_review_prompt
+from notepad_grounding.prompts import build_locate_prompt
 
 DEFAULT_MODEL = "gpt-5.4"
 MIN_CONFIDENCE = 0.85
 
 logger = logging.getLogger(__name__)
-
-
-class IconBBox(BaseModel):
-    left: int = Field(description="Left edge of the icon bounding box in pixels")
-    top: int = Field(description="Top edge of the icon bounding box in pixels")
-    right: int = Field(description="Right edge of the icon bounding box in pixels")
-    bottom: int = Field(description="Bottom edge of the icon bounding box in pixels")
-
-
-class IconLocation(BaseModel):
-    x: int = Field(description="X coordinate of the icon center in pixels")
-    y: int = Field(description="Y coordinate of the icon center in pixels")
-    bbox: IconBBox = Field(description="Bounding box of the visible icon graphic area")
-    confidence: float = Field(ge=0.0, le=1.0, description="Confidence score from 0.0 to 1.0")
-    rationale: str = Field(description="Short explanation of the location choice")
-
-
-class AppOpenReview(BaseModel):
-    opened_expected_app: bool
 
 
 def capture_desktop() -> Image.Image:
@@ -46,19 +32,6 @@ def _image_url(image: Image.Image) -> str:
     buffer = BytesIO()
     image.convert("RGB").save(buffer, format="PNG")
     return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('ascii')}"
-
-
-def build_locate_prompt(*, query: str, width: int, height: int) -> str:
-    return f"""
-        You are looking at a Windows desktop screenshot.
-        Dimensions: width={width}, height={height}. Coordinates start at the top-left.
-
-        Locate this desktop icon/shortcut: {query}
-        Follow the target description when deciding whether to use label text or visual icon appearance.
-
-        Use x and y for the center of the icon graphic.
-        Use bbox for only the visible icon graphic area, not the text label.
-    """.strip()
 
 
 def locate_icon(*, query: str, output_dir: Path) -> IconLocation | None:
@@ -119,11 +92,7 @@ def verify_app_opened(
     before_image: Image.Image,
     after_image: Image.Image,
 ) -> AppOpenReview | None:
-    prompt = (
-        f"Compare the desktop immediately before and after a double-click intended to open {expected_app}. "
-        f"Set opened_expected_app to true only if the after screenshot shows {expected_app} newly opened. "
-        "If another app opened or the evidence is uncertain, set it to false."
-    )
+    prompt = build_app_open_review_prompt(expected_app=expected_app)
     try:
         response = OpenAI().responses.parse(
             model=os.environ.get("OPENAI_MODEL", DEFAULT_MODEL),

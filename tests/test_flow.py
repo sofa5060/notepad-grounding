@@ -37,7 +37,7 @@ def test_run_flow_locate_mode_captures_once_and_calls_locator(tmp_path):
 
     with (
         patch("notepad_grounding_paper.flow.build_default_dependencies", return_value=fake_dependencies()),
-        patch("notepad_grounding_paper.flow.capture_desktop", return_value=mock_image) as mock_capture,
+        patch("notepad_grounding_paper.desktop.capture_desktop", return_value=mock_image) as mock_capture,
         patch("notepad_grounding_paper.flow.run_locate", return_value=FakeLocateResult()) as mock_locate,
     ):
         result = run_flow(
@@ -66,16 +66,16 @@ def test_run_flow_run_mode_processes_posts_and_actions(tmp_path):
     with (
         patch("notepad_grounding_paper.flow.build_default_dependencies", return_value=fake_dependencies()),
         patch("notepad_grounding_paper.flow.fetch_posts", return_value=posts),
-        patch("notepad_grounding_paper.flow.capture_desktop", return_value=mock_image),
+        patch("notepad_grounding_paper.desktop.capture_desktop", return_value=mock_image),
         patch("notepad_grounding_paper.flow.run_locate", return_value=FakeLocateResult()),
-        patch("notepad_grounding_paper.flow.ensure_directory") as mock_ensure,
-        patch("notepad_grounding_paper.flow.clear_target_directory") as mock_clear,
-        patch("notepad_grounding_paper.flow.get_target_directory", return_value=tmp_path),
-        patch("notepad_grounding_paper.desktop_interactions.double_click") as mock_click,
-        patch("notepad_grounding_paper.desktop_interactions.type_text") as mock_type,
-        patch("notepad_grounding_paper.desktop_interactions.press_hotkey") as mock_hotkey,
-        patch("notepad_grounding_paper.desktop_interactions.sleep"),
-        patch("notepad_grounding_paper.desktop_interactions.is_window_active", return_value=True),
+        patch("notepad_grounding_paper.desktop.ensure_directory") as mock_ensure,
+        patch("notepad_grounding_paper.desktop.clear_target_directory") as mock_clear,
+        patch("notepad_grounding_paper.desktop.get_target_directory", return_value=tmp_path),
+        patch("notepad_grounding_paper.desktop.double_click") as mock_click,
+        patch("notepad_grounding_paper.desktop.type_text") as mock_type,
+        patch("notepad_grounding_paper.desktop.press_hotkey") as mock_hotkey,
+        patch("notepad_grounding_paper.desktop.sleep"),
+        patch("notepad_grounding_paper.desktop.is_window_active", return_value=True),
     ):
         result = run_flow(
             mode="run",
@@ -111,16 +111,16 @@ def test_run_flow_retries_failed_post_attempts(tmp_path):
     with (
         patch("notepad_grounding_paper.flow.build_default_dependencies", return_value=fake_dependencies()),
         patch("notepad_grounding_paper.flow.fetch_posts", return_value=posts),
-        patch("notepad_grounding_paper.flow.capture_desktop", return_value=mock_image),
+        patch("notepad_grounding_paper.desktop.capture_desktop", return_value=mock_image),
         patch("notepad_grounding_paper.flow.run_locate", side_effect=flaky_locate),
-        patch("notepad_grounding_paper.flow.ensure_directory"),
-        patch("notepad_grounding_paper.flow.clear_target_directory"),
-        patch("notepad_grounding_paper.flow.get_target_directory", return_value=tmp_path),
-        patch("notepad_grounding_paper.desktop_interactions.double_click") as mock_click,
-        patch("notepad_grounding_paper.desktop_interactions.type_text") as mock_type,
-        patch("notepad_grounding_paper.desktop_interactions.press_hotkey") as mock_hotkey,
-        patch("notepad_grounding_paper.desktop_interactions.sleep"),
-        patch("notepad_grounding_paper.desktop_interactions.is_window_active", return_value=True),
+        patch("notepad_grounding_paper.desktop.ensure_directory"),
+        patch("notepad_grounding_paper.desktop.clear_target_directory"),
+        patch("notepad_grounding_paper.desktop.get_target_directory", return_value=tmp_path),
+        patch("notepad_grounding_paper.desktop.double_click") as mock_click,
+        patch("notepad_grounding_paper.desktop.type_text") as mock_type,
+        patch("notepad_grounding_paper.desktop.press_hotkey") as mock_hotkey,
+        patch("notepad_grounding_paper.desktop.sleep"),
+        patch("notepad_grounding_paper.desktop.is_window_active", return_value=True),
     ):
         result = run_flow(
             mode="run",
@@ -148,15 +148,15 @@ def test_run_flow_records_failure_after_max_retries(tmp_path):
     with (
         patch("notepad_grounding_paper.flow.build_default_dependencies", return_value=fake_dependencies()),
         patch("notepad_grounding_paper.flow.fetch_posts", return_value=posts),
-        patch("notepad_grounding_paper.flow.capture_desktop", return_value=mock_image),
+        patch("notepad_grounding_paper.desktop.capture_desktop", return_value=mock_image),
         patch("notepad_grounding_paper.flow.run_locate", side_effect=RuntimeError("Always fails")),
-        patch("notepad_grounding_paper.flow.ensure_directory"),
-        patch("notepad_grounding_paper.flow.clear_target_directory"),
-        patch("notepad_grounding_paper.flow.get_target_directory", return_value=tmp_path),
-        patch("notepad_grounding_paper.desktop_interactions.double_click") as mock_click,
-        patch("notepad_grounding_paper.desktop_interactions.type_text") as mock_type,
-        patch("notepad_grounding_paper.desktop_interactions.press_hotkey") as mock_hotkey,
-        patch("notepad_grounding_paper.desktop_interactions.sleep"),
+        patch("notepad_grounding_paper.desktop.ensure_directory"),
+        patch("notepad_grounding_paper.desktop.clear_target_directory"),
+        patch("notepad_grounding_paper.desktop.get_target_directory", return_value=tmp_path),
+        patch("notepad_grounding_paper.desktop.double_click") as mock_click,
+        patch("notepad_grounding_paper.desktop.type_text") as mock_type,
+        patch("notepad_grounding_paper.desktop.press_hotkey") as mock_hotkey,
+        patch("notepad_grounding_paper.desktop.sleep"),
     ):
         result = run_flow(
             mode="run",
