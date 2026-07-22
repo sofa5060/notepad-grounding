@@ -50,41 +50,21 @@ def locate_from_lines(
     taskbar_height: int = 48,
     min_score: float = 0.72,
 ) -> LocateResult | None:
-    grid = build_grid(
-        screen_size,
-        cell_width=cell_width,
-        cell_height=cell_height,
-        taskbar_height=taskbar_height,
-    )
-    candidates = infer_candidates(
-        lines,
-        screen_size=screen_size,
-        query=query,
-        taskbar_height=taskbar_height,
-    )
+    grid = build_grid(screen_size, cell_width=cell_width, cell_height=cell_height, taskbar_height=taskbar_height)
+    candidates = infer_candidates(lines, screen_size=screen_size, query=query, taskbar_height=taskbar_height)
     if not candidates:
         return None
 
     best = max(candidates, key=lambda candidate: candidate.score)
     if best.score < min_score:
         return None
-    return LocateResult(
-        query=query,
-        center=best.icon_center,
-        candidate=best,
-        candidates=candidates,
-        grid=grid,
-    )
+    return LocateResult(query=query, center=best.icon_center, candidate=best, candidates=candidates, grid=grid)
 
 
 def build_grid(
-    screen_size: tuple[int, int],
-    *,
-    cell_width: int = 96,
-    cell_height: int = 96,
-    taskbar_height: int = 48,
+    screen_size: tuple[int, int], *, cell_width: int = 96, cell_height: int = 96, taskbar_height: int = 48
 ) -> list[GridCell]:
-    width, height = screen_size
+    (width, height) = screen_size
     usable_height = max(0, height - taskbar_height)
     cells: list[GridCell] = []
     index = 1
@@ -102,12 +82,7 @@ def build_grid(
 
 
 def infer_candidates(
-    lines: Iterable[OcrLine],
-    *,
-    screen_size: tuple[int, int],
-    query: str,
-    taskbar_height: int = 48,
-    icon_size: int = 64,
+    lines: Iterable[OcrLine], *, screen_size: tuple[int, int], query: str, taskbar_height: int = 48, icon_size: int = 64
 ) -> list[Candidate]:
     candidates: list[Candidate] = []
     for line in lines:
@@ -141,13 +116,8 @@ def label_score(query: str, text: str) -> float:
     return SequenceMatcher(None, normalized_query, normalized_text).ratio()
 
 
-def _infer_icon_box(
-    label_box: Box,
-    *,
-    screen_size: tuple[int, int],
-    icon_size: int,
-) -> Box:
-    label_center_x, _ = _center(label_box)
+def _infer_icon_box(label_box: Box, *, screen_size: tuple[int, int], icon_size: int) -> Box:
+    (label_center_x, _) = _center(label_box)
     gap = 6
     x1 = label_center_x - icon_size // 2
     x2 = x1 + icon_size
@@ -156,12 +126,7 @@ def _infer_icon_box(
     return _clamp((x1, y1, x2, y2), screen_size)
 
 
-def _is_plausible_label(
-    line: OcrLine,
-    *,
-    screen_size: tuple[int, int],
-    taskbar_height: int,
-) -> bool:
+def _is_plausible_label(line: OcrLine, *, screen_size: tuple[int, int], taskbar_height: int) -> bool:
     text = line.text.strip()
     if not any(character.isalnum() for character in text):
         return False
@@ -190,7 +155,7 @@ def _union(boxes: list[Box]) -> Box:
 
 
 def _clamp(box: Box, screen_size: tuple[int, int]) -> Box:
-    width, height = screen_size
+    (width, height) = screen_size
     return (
         max(0, min(box[0], width - 1)),
         max(0, min(box[1], height - 1)),

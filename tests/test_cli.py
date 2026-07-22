@@ -23,7 +23,6 @@ def test_start_flow_calls_run_flow_for_default_command(monkeypatch, tmp_path):
 
     class FakeResult:
         output_dir = str(tmp_path)
-        result_json = str(tmp_path / "result.json")
         total_posts = 0
         succeeded = 0
         failed = 0
@@ -46,7 +45,6 @@ def test_start_flow_calls_run_flow_for_locate_command(monkeypatch, tmp_path):
 
     class FakeResult:
         output_dir = str(tmp_path)
-        result_json = str(tmp_path / "result.json")
         center = (10, 20)
 
     def fake_run_flow(**kwargs):

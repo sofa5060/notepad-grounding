@@ -34,11 +34,7 @@ def draw_ocr(image: Image.Image, lines: Iterable[OcrLine], output_path: Path) ->
 
 
 def draw_candidates(
-    image: Image.Image,
-    *,
-    candidates: Iterable[Candidate],
-    selected: Candidate | None,
-    output_path: Path,
+    image: Image.Image, *, candidates: Iterable[Candidate], selected: Candidate | None, output_path: Path
 ) -> Path:
     annotated = image.convert("RGB").copy()
     draw = ImageDraw.Draw(annotated)
@@ -50,7 +46,7 @@ def draw_candidates(
 
     if selected is not None:
         _draw_box(draw, selected.icon_box, (255, 0, 0), "selected", font, width=4)
-        x, y = selected.icon_center
+        (x, y) = selected.icon_center
         draw.line((x - 10, y, x + 10, y), fill=(255, 0, 0), width=3)
         draw.line((x, y - 10, x, y + 10), fill=(255, 0, 0), width=3)
     return _save(annotated, output_path)
@@ -68,7 +64,7 @@ def _draw_box(
     draw.rectangle(box, outline=color, width=width)
     x = box[0] + 3
     y = max(0, box[1] - 14)
-    left, top, right, bottom = draw.textbbox((x, y), text, font=font)
+    (left, top, right, bottom) = draw.textbbox((x, y), text, font=font)
     draw.rectangle((left - 2, top - 1, right + 2, bottom + 1), fill=(255, 255, 255))
     draw.text((x, y), text, fill=color, font=font)
 

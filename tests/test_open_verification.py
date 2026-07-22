@@ -10,9 +10,7 @@ from notepad_grounding import llm
 
 def test_verify_app_opened_sends_labeled_images_and_parses_boolean(monkeypatch):
     responses = MagicMock()
-    responses.parse.return_value = SimpleNamespace(
-        output_parsed=llm.AppOpenReview(opened_expected_app=True)
-    )
+    responses.parse.return_value = SimpleNamespace(output_parsed=llm.AppOpenReview(opened_expected_app=True))
     monkeypatch.setattr(llm, "OpenAI", lambda: SimpleNamespace(responses=responses))
 
     result = llm.verify_app_opened(
@@ -37,11 +35,12 @@ def test_verify_app_opened_returns_none_on_api_failure(monkeypatch):
     responses.parse.side_effect = RuntimeError("offline")
     monkeypatch.setattr(llm, "OpenAI", lambda: SimpleNamespace(responses=responses))
 
-    assert llm.verify_app_opened(
-        expected_app="Windows Notepad",
-        before_image=Image.new("RGB", (2, 2)),
-        after_image=Image.new("RGB", (2, 2)),
-    ) is None
+    assert (
+        llm.verify_app_opened(
+            expected_app="Windows Notepad", before_image=Image.new("RGB", (2, 2)), after_image=Image.new("RGB", (2, 2))
+        )
+        is None
+    )
 
 
 def configure_click(monkeypatch, *, verdict, window_changes):
@@ -50,20 +49,12 @@ def configure_click(monkeypatch, *, verdict, window_changes):
     monkeypatch.setattr(automation, "capture_desktop", MagicMock(side_effect=[before_image, after_image]))
     monkeypatch.setattr(automation, "verify_app_opened", MagicMock(return_value=verdict))
     monkeypatch.setattr(automation, "visible_window_handles", MagicMock(return_value={1}))
-    monkeypatch.setattr(
-        automation,
-        "wait_for_visible_window_change",
-        MagicMock(side_effect=window_changes),
-    )
+    monkeypatch.setattr(automation, "wait_for_visible_window_change", MagicMock(side_effect=window_changes))
     monkeypatch.setattr(automation, "pyautogui", MagicMock())
 
 
 def test_automate_post_verifies_before_typing_and_saves_artifacts(monkeypatch, tmp_path):
-    configure_click(
-        monkeypatch,
-        verdict=llm.AppOpenReview(opened_expected_app=True),
-        window_changes=[True],
-    )
+    configure_click(monkeypatch, verdict=llm.AppOpenReview(opened_expected_app=True), window_changes=[True])
     type_content = MagicMock()
     save_file = MagicMock()
     close_notepad = MagicMock()
@@ -87,22 +78,12 @@ def test_automate_post_verifies_before_typing_and_saves_artifacts(monkeypatch, t
     close_notepad.assert_called_once_with()
     assert (tmp_path / "run" / "open-before.png").exists()
     assert (tmp_path / "run" / "open-after.png").exists()
-    assert (tmp_path / "run" / "open-verification.json").read_text() == (
-        '{\n  "opened_expected_app": true\n}'
-    )
+    assert (tmp_path / "run" / "open-verification.json").read_text() == ('{\n  "opened_expected_app": true\n}')
 
 
-@pytest.mark.parametrize(
-    "opened_expected_app",
-    [False, None],
-    ids=["mismatch", "review-failure"],
-)
+@pytest.mark.parametrize("opened_expected_app", [False, None], ids=["mismatch", "review-failure"])
 def test_automate_post_closes_unverified_app_without_typing(monkeypatch, tmp_path, opened_expected_app):
-    verdict = (
-        llm.AppOpenReview(opened_expected_app=opened_expected_app)
-        if opened_expected_app is not None
-        else None
-    )
+    verdict = llm.AppOpenReview(opened_expected_app=opened_expected_app) if opened_expected_app is not None else None
     configure_click(monkeypatch, verdict=verdict, window_changes=[True, True])
     type_content = MagicMock()
     save_file = MagicMock()
@@ -126,19 +107,10 @@ def test_automate_post_closes_unverified_app_without_typing(monkeypatch, tmp_pat
 
 
 def test_click_icon_aborts_when_unverified_app_does_not_close(monkeypatch, tmp_path):
-    configure_click(
-        monkeypatch,
-        verdict=llm.AppOpenReview(opened_expected_app=False),
-        window_changes=[True, False],
-    )
+    configure_click(monkeypatch, verdict=llm.AppOpenReview(opened_expected_app=False), window_changes=[True, False])
 
     with pytest.raises(automation.AppCloseTimeoutError):
-        automation.click_icon(
-            x=100,
-            y=200,
-            expected_app="Windows Notepad",
-            output_dir=tmp_path,
-        )
+        automation.click_icon(x=100, y=200, expected_app="Windows Notepad", output_dir=tmp_path)
 
 
 def test_main_retries_recoverable_verification_failure(monkeypatch, tmp_path):
@@ -146,9 +118,7 @@ def test_main_retries_recoverable_verification_failure(monkeypatch, tmp_path):
 
     coordinates = SimpleNamespace(x=100, y=200)
     expected_file = tmp_path / "post_1.txt"
-    automate_post = MagicMock(
-        side_effect=[automation.AppOpenVerificationError("wrong app"), expected_file]
-    )
+    automate_post = MagicMock(side_effect=[automation.AppOpenVerificationError("wrong app"), expected_file])
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(main, "OUTPUT_DIR", tmp_path / "output")
     monkeypatch.setattr(main, "load_dotenv", MagicMock())

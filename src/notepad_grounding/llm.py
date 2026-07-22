@@ -36,7 +36,7 @@ def _image_url(image: Image.Image) -> str:
 
 def locate_icon(*, query: str, output_dir: Path) -> IconLocation | None:
     image = capture_desktop()
-    width, height = image.size
+    (width, height) = image.size
 
     prompt = build_locate_prompt(query=query, width=width, height=height)
 
@@ -87,10 +87,7 @@ def locate_icon(*, query: str, output_dir: Path) -> IconLocation | None:
 
 
 def verify_app_opened(
-    *,
-    expected_app: str,
-    before_image: Image.Image,
-    after_image: Image.Image,
+    *, expected_app: str, before_image: Image.Image, after_image: Image.Image
 ) -> AppOpenReview | None:
     prompt = build_app_open_review_prompt(expected_app=expected_app)
     try:

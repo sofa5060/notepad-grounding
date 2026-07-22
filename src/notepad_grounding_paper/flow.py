@@ -1,19 +1,26 @@
+"""Top-level orchestration: wires the LLM client/reviewer into the two modes.
+
+- "locate": just find an icon on the current desktop (debugging aid).
+- "run": full automation — fetch posts from the API, then for each post
+  locate the Notepad icon, open it, type the post, and save it to a file.
+
+The GUI interactions (clicking, typing, screenshots) live in gui.py; the
+icon search lives in locate.py; the LLM wiring lives in llm.py.
+"""
+
 from __future__ import annotations
 
-import json
 import logging
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
-from notepad_grounding_paper import desktop as steps
+from notepad_grounding_paper import gui
 from notepad_grounding_paper.api import fetch_posts
 from notepad_grounding_paper.locate import run_locate
 from notepad_grounding_paper.llm import OpenAIReviewer
 from notepad_grounding_paper.llm import OpenAIVisionClient
 from notepad_grounding_paper.models import AutomationResult
 from notepad_grounding_paper.models import FlowDependencies
-from notepad_grounding_paper.models import PostResult
 from notepad_grounding_paper.models import VisualSearchResult
 
 logger = logging.getLogger(__name__)
@@ -33,11 +40,10 @@ def run_flow(
     dependencies = build_default_dependencies()
     if mode == "locate":
         return run_locate(
-            steps.capture_desktop(),
+            gui.capture_desktop(),
             query=query,
             client=dependencies.client,
             target_reviewer=dependencies.reviewer,
-            bbox_reviewer=dependencies.reviewer,
             output_root=output_root / "locate",
             timestamp=timestamp,
             rounds=llm_rounds,
@@ -57,10 +63,7 @@ def run_flow(
 
 
 def build_default_dependencies() -> FlowDependencies:
-    return FlowDependencies(
-        client=OpenAIVisionClient(),
-        reviewer=OpenAIReviewer(),
-    )
+    return FlowDependencies(client=OpenAIVisionClient(), reviewer=OpenAIReviewer())
 
 
 def _run_automation_flow(
@@ -78,18 +81,19 @@ def _run_automation_flow(
     output_dir = output_root / "automation" / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Gather the work: the posts to write and the folder to save them into.
     logger.info("Starting automation for query=%r", query)
     posts = fetch_posts(limit=post_limit)
     logger.info("Fetched %d posts", len(posts))
 
-    target_dir = steps.prepare_target_directory()
+    target_dir = gui.prepare_target_directory()
 
-    post_results: list[PostResult] = []
     succeeded = 0
     failed = 0
 
+    # Each post runs independently; one failure doesn't stop the rest.
     for post in posts:
-        post_result, did_succeed = _write_post_to_notepad(
+        if _write_post_to_notepad(
             post=post,
             query=query,
             dependencies=dependencies,
@@ -98,31 +102,14 @@ def _run_automation_flow(
             max_retries=max_retries,
             retry_delay=retry_delay,
             llm_rounds=llm_rounds,
-        )
-        post_results.append(post_result)
-        if did_succeed:
+        ):
             succeeded += 1
         else:
             failed += 1
 
-    result_path = output_dir / "result.json"
-    payload = {
-        "query": query,
-        "total_posts": len(posts),
-        "succeeded": succeeded,
-        "failed": failed,
-        "output_dir": str(output_dir),
-        "results": [asdict(result) for result in post_results],
-    }
-    result_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
+    logger.info("Automation finished: %d succeeded, %d failed", succeeded, failed)
     return AutomationResult(
-        query=query,
-        total_posts=len(posts),
-        succeeded=succeeded,
-        failed=failed,
-        output_dir=str(output_dir),
-        result_json=str(result_path),
+        query=query, total_posts=len(posts), succeeded=succeeded, failed=failed, output_dir=str(output_dir)
     )
 
 
@@ -136,134 +123,104 @@ def _write_post_to_notepad(
     max_retries: int,
     retry_delay: float,
     llm_rounds: int,
-) -> tuple[PostResult, bool]:
-    post_id = post["id"]
-    title = post["title"]
-    body = post["body"]
-    filename = f"post_{post_id}.txt"
+) -> bool:
+    """Write one post into Notepad, retrying the whole sequence on failure.
+
+    One attempt = locate the icon, open Notepad, type the post, save + close.
+    Any exception counts as a failed attempt; after max_retries the post is
+    reported as failed instead of aborting the whole run.
+    """
+    filename = f"post_{post['id']}.txt"
     full_path = target_dir / filename
-    center: tuple[int, int] | None = None
-    error_msg: str | None = None
-    status = "failed"
 
     for attempt in range(1, max_retries + 1):
         try:
             logger.info("[%s] Attempt %d/%d: grounding icon...", filename, attempt, max_retries)
             result = run_locate(
-                steps.capture_desktop(),
+                gui.capture_desktop(),
                 query=query,
                 client=dependencies.client,
                 target_reviewer=dependencies.reviewer,
-                bbox_reviewer=dependencies.reviewer,
                 output_root=output_dir / "locate",
                 rounds=llm_rounds,
             )
-            center = result.center
-            logger.info("[%s] Icon found at %s (took %.2fs)", filename, center, result.elapsed_seconds)
-            _open_target(filename=filename, query=query, center=center, dependencies=dependencies)
-            _type_post(filename=filename, title=title, body=body, dependencies=dependencies)
+            logger.info("[%s] Icon found at %s (took %.2fs)", filename, result.center, result.elapsed_seconds)
+            _open_target(filename=filename, query=query, center=result.center, dependencies=dependencies)
+            _type_post(filename=filename, title=post["title"], body=post["body"], dependencies=dependencies)
             _save_and_close(filename=filename, full_path=full_path, dependencies=dependencies)
-            status = "success"
-            break
+            return True
         except Exception as exc:
-            error_msg = str(exc)
-            logger.warning("[%s] Attempt %d failed: %s", filename, attempt, error_msg)
+            logger.warning("[%s] Attempt %d failed: %s", filename, attempt, exc)
             if attempt < max_retries:
-                steps.sleep(retry_delay)
-            else:
-                logger.error("[%s] All %d attempts failed", filename, max_retries)
+                gui.sleep(retry_delay)
 
-    return (
-        PostResult(
-            post_id=post_id,
-            status=status,
-            filename=filename,
-            center=center,
-            error=error_msg,
-        ),
-        status == "success",
-    )
+    logger.error("[%s] All %d attempts failed", filename, max_retries)
+    return False
 
 
-def _open_target(
-    *,
-    filename: str,
-    query: str,
-    center: tuple[int, int],
-    dependencies: FlowDependencies,
-) -> None:
-    steps.double_click(*center)
-    steps.sleep(2.0)
+def _open_target(*, filename: str, query: str, center: tuple[int, int], dependencies: FlowDependencies) -> None:
+    """Double-click the located icon, then verify Notepad actually opened."""
+    gui.double_click(*center)
+    gui.sleep(2.0)
     review = dependencies.reviewer.review_desktop_state(
         action=f"Double-clicked the '{query}' desktop icon at {center}",
         expected="Notepad window is open",
-        image=steps.capture_desktop(),
+        image=gui.capture_desktop(),
     )
     if review.status == "wrong_app":
         logger.warning("[%s] Reviewer detected wrong app: %s", filename, review.rationale)
-        steps.close_window_hard()
-        steps.sleep(2.0)
+        gui.close_window_hard()
+        gui.sleep(2.0)
         raise RuntimeError(f"Wrong app opened: {review.rationale}")
     if review.status in ("error", "retry"):
-        steps.handle_recovery(review.action_needed)
+        gui.handle_recovery(review.action_needed)
         raise RuntimeError(f"Open failed: {review.rationale}")
 
 
-def _type_post(
-    *,
-    filename: str,
-    title: str,
-    body: str,
-    dependencies: FlowDependencies,
-) -> None:
-    steps.type_text(f"Title: {title}\n\n{body}")
-    steps.sleep(0.5)
+def _type_post(*, filename: str, title: str, body: str, dependencies: FlowDependencies) -> None:
+    """Type the post into Notepad and sanity-check the screen afterwards."""
+    gui.type_text(f"Title: {title}\n\n{body}")
+    gui.sleep(0.5)
     review = dependencies.reviewer.review_desktop_state(
         action="Typed post content into Notepad",
         expected="Notepad shows the typed post text",
-        image=steps.capture_desktop(),
+        image=gui.capture_desktop(),
     )
     if review.status != "success":
         logger.warning("[%s] Reviewer detected typing issue: %s", filename, review.rationale)
 
 
-def _save_and_close(
-    *,
-    filename: str,
-    full_path: Path,
-    dependencies: FlowDependencies,
-) -> None:
-    steps.save_post_file(full_path=full_path)
+def _save_and_close(*, filename: str, full_path: Path, dependencies: FlowDependencies) -> None:
+    """Save the file, clear any pop-up dialogs, then close Notepad."""
+    gui.save_post_file(full_path=full_path)
+    # Up to 3 review cycles to clear pop-ups (e.g. an overwrite confirmation)
+    # before giving up on the save.
     for _ in range(3):
         review = dependencies.reviewer.review_desktop_state(
             action=f"Pressed Save with path {full_path}",
             expected="File is saved, no dialogs remain, Notepad is open",
-            image=steps.capture_desktop(),
+            image=gui.capture_desktop(),
         )
         if review.status == "success":
             break
         if review.status == "pop_up":
             logger.info("[%s] Reviewer detected pop-up: %s", filename, review.rationale)
-            steps.handle_recovery(review.action_needed)
-            steps.sleep(1.0)
+            gui.handle_recovery(review.action_needed)
+            gui.sleep(1.0)
             continue
         if review.status == "wrong_app":
             logger.warning("[%s] Reviewer detected wrong window: %s", filename, review.rationale)
-            steps.handle_recovery(review.action_needed)
+            gui.handle_recovery(review.action_needed)
             raise RuntimeError(f"Save went wrong: {review.rationale}")
-        steps.handle_recovery(review.action_needed)
+        gui.handle_recovery(review.action_needed)
         break
     else:
         raise RuntimeError("Pop-up handling exceeded max cycles")
 
-    steps.close_notepad()
+    gui.close_notepad()
     review = dependencies.reviewer.review_desktop_state(
-        action="Closed Notepad",
-        expected="Notepad is closed, desktop is visible",
-        image=steps.capture_desktop(),
+        action="Closed Notepad", expected="Notepad is closed, desktop is visible", image=gui.capture_desktop()
     )
     if review.status != "success":
         logger.warning("[%s] Reviewer detected close issue: %s", filename, review.rationale)
-        steps.handle_recovery(review.action_needed)
-
-
+        gui.handle_recovery(review.action_needed)

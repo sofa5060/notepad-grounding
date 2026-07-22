@@ -20,9 +20,7 @@ def test_group_words_by_line_merges_wrapped_vertical_icon_label():
 
     lines = group_words_by_line(words)
 
-    assert lines == [
-        OcrLine(text="Visual Studio Code", confidence=100, box=(18, 900, 58, 950))
-    ]
+    assert lines == [OcrLine(text="Visual Studio Code", confidence=100, box=(18, 900, 58, 950))]
 
 
 def test_group_words_by_line_merges_wrapped_label_when_centers_are_shifted():
@@ -33,9 +31,7 @@ def test_group_words_by_line_merges_wrapped_label_when_centers_are_shifted():
 
     lines = group_words_by_line(words)
 
-    assert lines == [
-        OcrLine(text="Screen Recorder", confidence=100, box=(100, 500, 235, 536))
-    ]
+    assert lines == [OcrLine(text="Screen Recorder", confidence=100, box=(100, 500, 235, 536))]
 
 
 def test_group_words_by_line_does_not_merge_vertically_close_distant_labels():
@@ -70,15 +66,11 @@ def test_prepare_ocr_image_upscales_without_changing_original():
 
 
 def test_scale_ocr_lines_maps_scaled_boxes_back_to_screen_coordinates():
-    lines = [
-        OcrLine(text="Notepad", confidence=100, box=(200, 100, 300, 140)),
-    ]
+    lines = [OcrLine(text="Notepad", confidence=100, box=(200, 100, 300, 140))]
 
     scaled = scale_ocr_lines(lines, scale=2)
 
-    assert scaled == [
-        OcrLine(text="Notepad", confidence=100, box=(100, 50, 150, 70)),
-    ]
+    assert scaled == [OcrLine(text="Notepad", confidence=100, box=(100, 50, 150, 70))]
 
 
 def test_iter_ocr_tiles_uses_overlap_and_covers_screen():
@@ -90,15 +82,11 @@ def test_iter_ocr_tiles_uses_overlap_and_covers_screen():
 
 
 def test_offset_and_scale_words_maps_tile_ocr_to_screen_coordinates():
-    words = [
-        OcrWord(text="Notepad", confidence=100, box=(20, 10, 120, 40), line_id=1),
-    ]
+    words = [OcrWord(text="Notepad", confidence=100, box=(20, 10, 120, 40), line_id=1)]
 
     mapped = offset_and_scale_words(words, offset_x=400, offset_y=300, scale=2, line_id_offset=100)
 
-    assert mapped == [
-        OcrWord(text="Notepad", confidence=100, box=(410, 305, 460, 320), line_id=101),
-    ]
+    assert mapped == [OcrWord(text="Notepad", confidence=100, box=(410, 305, 460, 320), line_id=101)]
 
 
 def test_dedupe_ocr_words_removes_duplicate_words_from_overlapping_tiles():
@@ -133,14 +121,7 @@ def test_extract_ocr_lines_from_grid_merges_words_across_neighboring_tiles():
 
     calls = []
 
-    lines = extract_ocr_lines_from_grid(
-        image,
-        ocr_words=fake_ocr,
-        tile_width=100,
-        tile_height=80,
-        overlap=20,
-        scale=2,
-    )
+    lines = extract_ocr_lines_from_grid(image, ocr_words=fake_ocr, tile_width=100, tile_height=80, overlap=20, scale=2)
 
     assert lines[0].text == "Note pad"
     assert lines[0].box == (80, 30, 103, 42)

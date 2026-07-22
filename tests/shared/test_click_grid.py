@@ -11,10 +11,8 @@ from notepad_grounding_paper.images import draw_full_click_marker
 def test_crop_around_point_and_offset_point_are_deterministic():
     image = Image.new("RGB", (200, 100), "white")
 
-    crop, crop_box = crop_around_point(image, center=(190, 90), size=(60, 60))
-    selected = cell_by_id(
-        build_grid_cells((0, 0, crop.width, crop.height), rows=5, cols=5, id_fmt="rc"), "R3C3"
-    )
+    (crop, crop_box) = crop_around_point(image, center=(190, 90), size=(60, 60))
+    selected = cell_by_id(build_grid_cells((0, 0, crop.width, crop.height), rows=5, cols=5, id_fmt="rc"), "R3C3")
 
     assert crop.size == (60, 60)
     assert crop_box == (140, 40, 200, 100)
@@ -69,7 +67,7 @@ def test_draw_full_click_marker_uses_red_marker_and_large_label(tmp_path):
     red_label_pixels = 0
     for y in range(0, 50):
         for x in range(rendered.width):
-            r, g, b = rendered.getpixel((x, y))
+            (r, g, b) = rendered.getpixel((x, y))
             if r > 200 and g < 80 and b < 80:
                 red_label_pixels += 1
     assert red_label_pixels > 20

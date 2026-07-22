@@ -24,6 +24,7 @@ OUTPUT_DIR = Path("output/notepad_grounding")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+
 def reset_target_directory(target_dir: Path) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
     for path in target_dir.iterdir():
@@ -31,6 +32,7 @@ def reset_target_directory(target_dir: Path) -> None:
             path.unlink()
         elif path.is_dir():
             shutil.rmtree(path)
+
 
 def main() -> None:
     load_dotenv()
@@ -53,8 +55,7 @@ def main() -> None:
 
             coordinates = locate_icon(query=QUERY, output_dir=run_output_dir)
             if coordinates is None:
-                logger.warning("[%d/%d run %d/%d] locate attempt failed",
-                               index, len(posts), attempt, POST_ATTEMPTS)
+                logger.warning("[%d/%d run %d/%d] locate attempt failed", index, len(posts), attempt, POST_ATTEMPTS)
                 continue
             logger.info("double-clicking %s at (%d, %d)", QUERY, coordinates.x, coordinates.y)
             try:
@@ -75,7 +76,7 @@ def main() -> None:
             logger.warning("[%d/%d] failed after %d attempts, skipping", index, len(posts), POST_ATTEMPTS)
             continue
         logger.info("saved to %s", full_path)
-        
+
         # Wait a bit before the next run to allow for moving the icon if needed
         if index < len(posts):
             logger.info("waiting %d seconds before next run", DELAY_BETWEEN_RUNS_SECONDS)

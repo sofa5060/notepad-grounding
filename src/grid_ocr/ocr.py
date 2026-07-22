@@ -63,10 +63,7 @@ def extract_windows_ocr_lines(
 
 
 def extract_ocr_lines_from_full_image(
-    image: Image.Image,
-    *,
-    ocr_words: Callable[[Image.Image], list[OcrWord]],
-    scale: int = 2,
+    image: Image.Image, *, ocr_words: Callable[[Image.Image], list[OcrWord]], scale: int = 2
 ) -> list[OcrLine]:
     ocr_image = prepare_ocr_image(image, scale=scale)
     words = ocr_words(ocr_image)
@@ -85,22 +82,14 @@ def extract_ocr_lines_from_grid(
 ) -> list[OcrLine]:
     words: list[OcrWord] = []
     for tile in iter_ocr_tiles(
-        width=image.width,
-        height=image.height,
-        tile_width=tile_width,
-        tile_height=tile_height,
-        overlap=overlap,
+        width=image.width, height=image.height, tile_width=tile_width, tile_height=tile_height, overlap=overlap
     ):
         crop = image.crop(tile.box)
         ocr_image = prepare_ocr_image(crop, scale=scale)
         tile_words = ocr_words(ocr_image)
         words.extend(
             offset_and_scale_words(
-                tile_words,
-                offset_x=tile.box[0],
-                offset_y=tile.box[1],
-                scale=scale,
-                line_id_offset=tile.index * 1000,
+                tile_words, offset_x=tile.box[0], offset_y=tile.box[1], scale=scale, line_id_offset=tile.index * 1000
             )
         )
 
@@ -162,12 +151,7 @@ def _windows_result_to_words(result: Any) -> list[OcrWord]:
             if not text:
                 continue
             rect = word.bounding_rect
-            box = (
-                round(rect.x),
-                round(rect.y),
-                round(rect.x + rect.width),
-                round(rect.y + rect.height),
-            )
+            box = (round(rect.x), round(rect.y), round(rect.x + rect.width), round(rect.y + rect.height))
             words.append(OcrWord(text=text, confidence=100, box=box, line_id=line_index))
     return words
 
@@ -175,10 +159,7 @@ def _windows_result_to_words(result: Any) -> list[OcrWord]:
 def prepare_ocr_image(image: Image.Image, *, scale: int = 2) -> Image.Image:
     if scale <= 1:
         return image.convert("RGB").copy()
-    return image.convert("RGB").resize(
-        (image.width * scale, image.height * scale),
-        Image.Resampling.LANCZOS,
-    )
+    return image.convert("RGB").resize((image.width * scale, image.height * scale), Image.Resampling.LANCZOS)
 
 
 def scale_ocr_lines(lines: Iterable[OcrLine], *, scale: int) -> list[OcrLine]:
@@ -199,14 +180,7 @@ def scale_ocr_lines(lines: Iterable[OcrLine], *, scale: int) -> list[OcrLine]:
     ]
 
 
-def iter_ocr_tiles(
-    *,
-    width: int,
-    height: int,
-    tile_width: int,
-    tile_height: int,
-    overlap: int,
-) -> list[OcrTile]:
+def iter_ocr_tiles(*, width: int, height: int, tile_width: int, tile_height: int, overlap: int) -> list[OcrTile]:
     if tile_width <= 0 or tile_height <= 0:
         raise ValueError("tile width and height must be positive")
     if overlap < 0 or overlap >= min(tile_width, tile_height):
@@ -223,10 +197,7 @@ def iter_ocr_tiles(
         for col, x in enumerate(x_starts):
             tiles.append(
                 OcrTile(
-                    index=index,
-                    row=row,
-                    col=col,
-                    box=(x, y, min(x + tile_width, width), min(y + tile_height, height)),
+                    index=index, row=row, col=col, box=(x, y, min(x + tile_width, width), min(y + tile_height, height))
                 )
             )
             index += 1
@@ -234,12 +205,7 @@ def iter_ocr_tiles(
 
 
 def offset_and_scale_words(
-    words: Iterable[OcrWord],
-    *,
-    offset_x: int,
-    offset_y: int,
-    scale: int,
-    line_id_offset: int,
+    words: Iterable[OcrWord], *, offset_x: int, offset_y: int, scale: int, line_id_offset: int
 ) -> list[OcrWord]:
     return [
         OcrWord(
@@ -294,19 +260,14 @@ def group_words_by_line(
 
     return _merge_wrapped_lines(
         _merge_inline_neighbor_lines(
-            sorted(lines, key=lambda line: _reading_order_key(line.box)),
-            max_horizontal_gap=max_horizontal_gap,
+            sorted(lines, key=lambda line: _reading_order_key(line.box)), max_horizontal_gap=max_horizontal_gap
         ),
         max_vertical_gap=max_vertical_gap,
         max_wrapped_horizontal_gap=max_wrapped_horizontal_gap,
     )
 
 
-def _merge_inline_neighbor_lines(
-    lines: list[OcrLine],
-    *,
-    max_horizontal_gap: int,
-) -> list[OcrLine]:
+def _merge_inline_neighbor_lines(lines: list[OcrLine], *, max_horizontal_gap: int) -> list[OcrLine]:
     merged: list[OcrLine] = []
     for line in lines:
         if not merged:
@@ -324,10 +285,7 @@ def _merge_inline_neighbor_lines(
 
 
 def _merge_wrapped_lines(
-    lines: list[OcrLine],
-    *,
-    max_vertical_gap: int,
-    max_wrapped_horizontal_gap: int,
+    lines: list[OcrLine], *, max_vertical_gap: int, max_wrapped_horizontal_gap: int
 ) -> list[OcrLine]:
     merged: list[OcrLine] = []
     for line in lines:
@@ -380,7 +338,10 @@ def _vertical_overlap_ratio(first: Box, second: Box) -> float:
 
 
 def _is_duplicate_word(candidate: OcrWord, existing: OcrWord, *, iou_threshold: float) -> bool:
-    return _normalize(candidate.text) == _normalize(existing.text) and _box_iou(candidate.box, existing.box) >= iou_threshold
+    return (
+        _normalize(candidate.text) == _normalize(existing.text)
+        and _box_iou(candidate.box, existing.box) >= iou_threshold
+    )
 
 
 def _box_iou(first: Box, second: Box) -> float:

@@ -46,23 +46,14 @@ def click_icon(*, x: int, y: int, expected_app: str, output_dir: Path) -> None:
 
     after_image = capture_desktop()
     after_image.save(output_dir / "open-after.png")
-    review = verify_app_opened(
-        expected_app=expected_app,
-        before_image=before_image,
-        after_image=after_image,
-    )
+    review = verify_app_opened(expected_app=expected_app, before_image=before_image, after_image=after_image)
     if review is not None:
-        (output_dir / "open-verification.json").write_text(
-            review.model_dump_json(indent=2),
-            encoding="utf-8",
-        )
+        (output_dir / "open-verification.json").write_text(review.model_dump_json(indent=2), encoding="utf-8")
     if review is not None and review.opened_expected_app:
         return
 
     if not close_foreground_app():
-        raise AppCloseTimeoutError(
-            f"Timed out after {WINDOW_CLOSE_TIMEOUT_SECONDS:.1f}s closing the unverified app"
-        )
+        raise AppCloseTimeoutError(f"Timed out after {WINDOW_CLOSE_TIMEOUT_SECONDS:.1f}s closing the unverified app")
     raise AppOpenVerificationError(f"Visual verification did not confirm {expected_app}")
 
 
@@ -71,9 +62,7 @@ def close_foreground_app() -> bool:
     logger.info("closing unverified foreground app with Alt+F4")
     pyautogui.hotkey("alt", "f4")
     return wait_for_visible_window_change(
-        before_windows,
-        action="Alt+F4 close",
-        timeout_seconds=WINDOW_CLOSE_TIMEOUT_SECONDS,
+        before_windows, action="Alt+F4 close", timeout_seconds=WINDOW_CLOSE_TIMEOUT_SECONDS
     )
 
 
@@ -110,18 +99,13 @@ def close_notepad() -> None:
         pyautogui.keyDown("f4")
         pyautogui.keyUp("f4")
         pyautogui.keyUp("alt")
-        wait_for_visible_window_change(before_windows, action="Alt+F4 close", timeout_seconds=WINDOW_CLOSE_TIMEOUT_SECONDS)
+        wait_for_visible_window_change(
+            before_windows, action="Alt+F4 close", timeout_seconds=WINDOW_CLOSE_TIMEOUT_SECONDS
+        )
 
 
 def automate_post(
-    *,
-    post: dict,
-    index: int,
-    target_dir: Path,
-    click_x: int,
-    click_y: int,
-    expected_app: str,
-    output_dir: Path,
+    *, post: dict, index: int, target_dir: Path, click_x: int, click_y: int, expected_app: str, output_dir: Path
 ) -> Path:
     post_id = post.get("id", index)
     full_path = target_dir / f"post_{post_id}.txt"

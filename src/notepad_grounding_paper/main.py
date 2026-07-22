@@ -20,8 +20,7 @@ def _setup_logging() -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="notepad-grounding",
-        description="Vision-based Windows desktop icon grounding and automation.",
+        prog="notepad-grounding", description="Vision-based Windows desktop icon grounding and automation."
     )
     parser.add_argument("--query", default="Notepad", help="Visible target query. Defaults to Notepad.")
 
@@ -66,7 +65,6 @@ def start_flow(args: argparse.Namespace) -> int:
 def _print_automation_result(result) -> None:
     print("flow=automation")
     print(f"output_dir={result.output_dir}")
-    print(f"result={result.result_json}")
     print(f"total_posts={result.total_posts}")
     print(f"succeeded={result.succeeded}")
     print(f"failed={result.failed}")
@@ -75,7 +73,6 @@ def _print_automation_result(result) -> None:
 def _print_locate_result(result) -> None:
     print("flow=locate")
     print(f"output_dir={result.output_dir}")
-    print(f"result={result.result_json}")
     print("found=true")
     print(f"center={result.center[0]},{result.center[1]}")
 

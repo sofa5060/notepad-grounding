@@ -36,3 +36,11 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+# Collapse multi-line calls/signatures back to one line whenever they fit,
+# even if they have a trailing comma.
+skip-magic-trailing-comma = true
