@@ -20,3 +20,15 @@ class IconLocation(BaseModel):
 
 class AppOpenReview(BaseModel):
     opened_expected_app: bool
+
+
+class NotepadOpenTimeoutError(RuntimeError):
+    pass
+
+
+class AppOpenVerificationError(RuntimeError):
+    pass
+
+
+class AppCloseTimeoutError(RuntimeError):
+    pass

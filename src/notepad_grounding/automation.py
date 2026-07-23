@@ -8,6 +8,9 @@ from pathlib import Path
 import pyautogui
 from notepad_grounding.llm import capture_desktop
 from notepad_grounding.llm import verify_app_opened
+from notepad_grounding.models import AppCloseTimeoutError
+from notepad_grounding.models import AppOpenVerificationError
+from notepad_grounding.models import NotepadOpenTimeoutError
 
 WINDOW_OPEN_TIMEOUT_SECONDS = 8.0
 WINDOW_CLOSE_TIMEOUT_SECONDS = 5.0
@@ -17,18 +20,6 @@ TEXT_TYPE_INTERVAL_SECONDS = 0.01
 PATH_TYPE_INTERVAL_SECONDS = 0.01
 
 logger = logging.getLogger(__name__)
-
-
-class NotepadOpenTimeoutError(RuntimeError):
-    pass
-
-
-class AppOpenVerificationError(RuntimeError):
-    pass
-
-
-class AppCloseTimeoutError(RuntimeError):
-    pass
 
 
 def open_app(*, x: int, y: int, expected_app: str, output_dir: Path) -> None:
