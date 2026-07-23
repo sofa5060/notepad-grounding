@@ -1,21 +1,12 @@
-from grid_ocr.grounding import build_grid
-from grid_ocr.grounding import infer_candidates
+from grid_ocr.grounding import find_candidates
 from grid_ocr.grounding import locate_from_lines
 from grid_ocr.ocr import OcrLine
 
 
-def test_build_grid_covers_screen_above_taskbar():
-    cells = build_grid((1920, 1080), cell_width=96, cell_height=96, taskbar_height=48)
-
-    assert cells[0].box == (0, 0, 96, 96)
-    assert cells[-1].box[3] <= 1032
-    assert len(cells) > 100
-
-
-def test_infer_candidates_places_icon_above_label():
+def test_find_candidates_places_icon_above_label():
     line = OcrLine(text="Notepad", confidence=100, box=(700, 460, 760, 478))
 
-    candidates = infer_candidates([line], screen_size=(1920, 1080), query="Notepad")
+    candidates = find_candidates([line], screen_size=(1920, 1080), query="Notepad")
 
     assert len(candidates) == 1
     candidate = candidates[0]
@@ -33,8 +24,8 @@ def test_locate_from_lines_selects_best_fuzzy_query_match():
     result = locate_from_lines(lines, screen_size=(1920, 1080), query="Notepad")
 
     assert result is not None
-    assert result.candidate.label_text == "Note pad"
-    assert result.center == result.candidate.icon_center
+    assert result.label_text == "Note pad"
+    assert result.icon_center[1] < result.label_box[1]
 
 
 def test_low_score_candidates_do_not_locate():

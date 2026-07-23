@@ -3,7 +3,7 @@ name = "notepad-grounding"
 version = "0.1.0"
 description = "Vision-based Windows desktop grounding proof for locating the Notepad shortcut."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "mss>=10.1.0",
     "openai>=2.0.0",
@@ -23,6 +23,7 @@ dependencies = [
 [project.scripts]
 notepad-grounding = "notepad_grounding.main:main"
 notepad-grounding-paper = "notepad_grounding_paper.main:main"
+grid-ocr = "grid_ocr.main:main"
 
 [dependency-groups]
 dev = [

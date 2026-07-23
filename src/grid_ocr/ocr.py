@@ -1,15 +1,27 @@
 from __future__ import annotations
 
 import asyncio
-from collections import defaultdict
+from collections.abc import Hashable
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, Callable, Iterable
+from typing import Iterable
 
 from PIL import Image
+from winrt.windows.graphics.imaging import BitmapDecoder
+from winrt.windows.media.ocr import OcrEngine
+from winrt.windows.storage import FileAccessMode, StorageFile
 
 Box = tuple[int, int, int, int]
+
+TILE_WIDTH = 320
+TILE_HEIGHT = 240
+TILE_OVERLAP = 48
+OCR_SCALE = 2
+IOU_DUPLICATE_THRESHOLD = 0.5
+MAX_HORIZONTAL_GAP = 32
+MAX_WRAPPED_VERTICAL_GAP = 8
+MAX_WRAPPED_HORIZONTAL_GAP = 24
 
 
 @dataclass(frozen=True)
@@ -17,7 +29,7 @@ class OcrWord:
     text: str
     confidence: float
     box: Box
-    line_id: int
+    line_id: Hashable
 
 
 @dataclass(frozen=True)
@@ -27,228 +39,109 @@ class OcrLine:
     box: Box
 
 
-@dataclass(frozen=True)
-class OcrTile:
-    index: int
-    row: int
-    col: int
-    box: Box
-
-
 class OcrError(RuntimeError):
     """Raised when OCR cannot run in the current environment."""
 
 
-def extract_windows_ocr_lines(
-    image: Image.Image,
-    *,
-    mode: str = "grid",
-    scale: int = 2,
-    tile_width: int = 320,
-    tile_height: int = 240,
-    overlap: int = 48,
-) -> list[OcrLine]:
-    if mode == "full":
-        return extract_ocr_lines_from_full_image(image, ocr_words=extract_windows_ocr_words, scale=scale)
-    if mode != "grid":
-        raise OcrError(f"Unsupported OCR mode: {mode}")
-    return extract_ocr_lines_from_grid(
-        image,
-        ocr_words=extract_windows_ocr_words,
-        tile_width=tile_width,
-        tile_height=tile_height,
-        overlap=overlap,
-        scale=scale,
-    )
+async def extract_windows_ocr_words(image: Image.Image) -> list[OcrWord]:
+    # Windows locks open files, so close the handle before PIL and WinRT open the
+    # path themselves; delete_on_close=False keeps the file until the with-block exits.
+    with NamedTemporaryFile(suffix=".png", delete_on_close=False) as file:
+        file.close()
+        temp_path = Path(file.name)
+        image.save(temp_path)
+        storage_file = await StorageFile.get_file_from_path_async(str(temp_path))
+        stream = await storage_file.open_async(FileAccessMode.READ)
+        decoder = await BitmapDecoder.create_async(stream)
+        bitmap = await decoder.get_software_bitmap_async()
+        stream.close()
+        engine = OcrEngine.try_create_from_user_profile_languages()
+        if engine is None:
+            raise OcrError("Windows OCR could not create an OCR engine for user languages.")
+        result = await engine.recognize_async(bitmap)
 
-
-def extract_ocr_lines_from_full_image(
-    image: Image.Image, *, ocr_words: Callable[[Image.Image], list[OcrWord]], scale: int = 2
-) -> list[OcrLine]:
-    ocr_image = prepare_ocr_image(image, scale=scale)
-    words = ocr_words(ocr_image)
-    lines = group_words_by_line(words)
-    return scale_ocr_lines(lines, scale=scale)
+        words: list[OcrWord] = []
+        for line_index, line in enumerate(result.lines, start=1):
+            for word in line.words:
+                text = str(word.text).strip()
+                if not text:
+                    continue
+                rect = word.bounding_rect
+                box = (round(rect.x), round(rect.y), round(rect.x + rect.width), round(rect.y + rect.height))
+                words.append(OcrWord(text=text, confidence=100, box=box, line_id=line_index))
+        return words
 
 
 def extract_ocr_lines_from_grid(
     image: Image.Image,
     *,
-    ocr_words: Callable[[Image.Image], list[OcrWord]],
-    tile_width: int = 320,
-    tile_height: int = 240,
-    overlap: int = 48,
-    scale: int = 2,
+    tile_width: int = TILE_WIDTH,
+    tile_height: int = TILE_HEIGHT,
+    overlap: int = TILE_OVERLAP,
+    scale: int = OCR_SCALE,
 ) -> list[OcrLine]:
-    words: list[OcrWord] = []
-    for tile in iter_ocr_tiles(
-        width=image.width, height=image.height, tile_width=tile_width, tile_height=tile_height, overlap=overlap
-    ):
-        crop = image.crop(tile.box)
-        ocr_image = prepare_ocr_image(crop, scale=scale)
-        tile_words = ocr_words(ocr_image)
-        words.extend(
-            offset_and_scale_words(
-                tile_words, offset_x=tile.box[0], offset_y=tile.box[1], scale=scale, line_id_offset=tile.index * 1000
-            )
-        )
+    # Upscale the whole screenshot once; each tile is cropped from the scaled image.
+    scaled = image.convert("RGB")
+    if scale > 1:
+        scaled = scaled.resize((image.width * scale, image.height * scale), Image.Resampling.LANCZOS)
 
+    x_starts = _tile_starts(length=image.width, tile_size=tile_width, stride=tile_width - overlap)
+    y_starts = _tile_starts(length=image.height, tile_size=tile_height, stride=tile_height - overlap)
+    tiles = [(x, y) for y in y_starts for x in x_starts]
+
+    words: list[OcrWord] = []
+    for tile_index, (x, y) in enumerate(tiles, start=1):
+        x2 = min(x + tile_width, image.width)
+        y2 = min(y + tile_height, image.height)
+        crop = scaled.crop((x * scale, y * scale, x2 * scale, y2 * scale))
+        for word in asyncio.run(extract_windows_ocr_words(crop)):
+            words.append(
+                OcrWord(
+                    text=word.text,
+                    confidence=word.confidence,
+                    box=(
+                        x + round(word.box[0] / scale),
+                        y + round(word.box[1] / scale),
+                        x + round(word.box[2] / scale),
+                        y + round(word.box[3] / scale),
+                    ),
+                    line_id=(tile_index, word.line_id),
+                )
+            )
     return group_words_by_line(dedupe_ocr_words(words))
 
 
-def extract_windows_ocr_words(image: Image.Image) -> list[OcrWord]:
-    try:
-        return asyncio.run(_extract_windows_ocr_words_async(image))
-    except RuntimeError as exc:
-        if "asyncio.run() cannot be called" not in str(exc):
-            raise
-
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(_extract_windows_ocr_words_async(image))
-    finally:
-        loop.close()
-
-
-async def _extract_windows_ocr_words_async(image: Image.Image) -> list[OcrWord]:
-    try:
-        from winrt.windows.graphics.imaging import BitmapDecoder
-        from winrt.windows.media.ocr import OcrEngine
-        from winrt.windows.storage import FileAccessMode, StorageFile
-    except ImportError as exc:
-        raise OcrError("Windows OCR requires PyWinRT packages and must run on Windows.") from exc
-
-    with NamedTemporaryFile(suffix=".png", delete=False) as file:
-        temp_path = Path(file.name)
-
-    try:
-        image.convert("RGB").save(temp_path)
-        storage_file = await StorageFile.get_file_from_path_async(str(temp_path))
-        stream = await storage_file.open_async(FileAccessMode.READ)
-        decoder = await BitmapDecoder.create_async(stream)
-        bitmap = await decoder.get_software_bitmap_async()
-        engine = OcrEngine.try_create_from_user_profile_languages()
-        if engine is None:
-            raise OcrError("Windows OCR could not create an OCR engine for user languages.")
-        result = await engine.recognize_async(bitmap)
-        return _windows_result_to_words(result)
-    except OcrError:
-        raise
-    except Exception as exc:
-        raise OcrError(f"Windows OCR failed: {exc}") from exc
-    finally:
-        try:
-            temp_path.unlink(missing_ok=True)
-        except OSError:
-            pass
-
-
-def _windows_result_to_words(result: Any) -> list[OcrWord]:
-    words: list[OcrWord] = []
-    for line_index, line in enumerate(result.lines, start=1):
-        for word in line.words:
-            text = str(word.text).strip()
-            if not text:
-                continue
-            rect = word.bounding_rect
-            box = (round(rect.x), round(rect.y), round(rect.x + rect.width), round(rect.y + rect.height))
-            words.append(OcrWord(text=text, confidence=100, box=box, line_id=line_index))
-    return words
-
-
-def prepare_ocr_image(image: Image.Image, *, scale: int = 2) -> Image.Image:
-    if scale <= 1:
-        return image.convert("RGB").copy()
-    return image.convert("RGB").resize((image.width * scale, image.height * scale), Image.Resampling.LANCZOS)
-
-
-def scale_ocr_lines(lines: Iterable[OcrLine], *, scale: int) -> list[OcrLine]:
-    if scale <= 1:
-        return list(lines)
-    return [
-        OcrLine(
-            text=line.text,
-            confidence=line.confidence,
-            box=(
-                round(line.box[0] / scale),
-                round(line.box[1] / scale),
-                round(line.box[2] / scale),
-                round(line.box[3] / scale),
-            ),
-        )
-        for line in lines
-    ]
-
-
-def iter_ocr_tiles(*, width: int, height: int, tile_width: int, tile_height: int, overlap: int) -> list[OcrTile]:
-    if tile_width <= 0 or tile_height <= 0:
-        raise ValueError("tile width and height must be positive")
-    if overlap < 0 or overlap >= min(tile_width, tile_height):
-        raise ValueError("overlap must be non-negative and smaller than tile dimensions")
-
-    stride_x = tile_width - overlap
-    stride_y = tile_height - overlap
-    x_starts = _tile_starts(length=width, tile_size=tile_width, stride=stride_x)
-    y_starts = _tile_starts(length=height, tile_size=tile_height, stride=stride_y)
-
-    tiles: list[OcrTile] = []
-    index = 1
-    for row, y in enumerate(y_starts):
-        for col, x in enumerate(x_starts):
-            tiles.append(
-                OcrTile(
-                    index=index, row=row, col=col, box=(x, y, min(x + tile_width, width), min(y + tile_height, height))
-                )
-            )
-            index += 1
-    return tiles
-
-
-def offset_and_scale_words(
-    words: Iterable[OcrWord], *, offset_x: int, offset_y: int, scale: int, line_id_offset: int
-) -> list[OcrWord]:
-    return [
-        OcrWord(
-            text=word.text,
-            confidence=word.confidence,
-            box=(
-                offset_x + round(word.box[0] / scale),
-                offset_y + round(word.box[1] / scale),
-                offset_x + round(word.box[2] / scale),
-                offset_y + round(word.box[3] / scale),
-            ),
-            line_id=word.line_id + line_id_offset,
-        )
-        for word in words
-    ]
-
-
-def dedupe_ocr_words(words: Iterable[OcrWord], *, iou_threshold: float = 0.5) -> list[OcrWord]:
+def dedupe_ocr_words(words: Iterable[OcrWord]) -> list[OcrWord]:
     kept: list[OcrWord] = []
     for word in sorted(words, key=lambda item: item.confidence, reverse=True):
-        if any(_is_duplicate_word(word, existing, iou_threshold=iou_threshold) for existing in kept):
-            continue
-        kept.append(word)
-    return sorted(kept, key=lambda item: (*_reading_order_key(item.box), item.text.lower()))
+        is_duplicate = any(
+            _normalize(existing.text) == _normalize(word.text)
+            and _box_iou(word.box, existing.box) >= IOU_DUPLICATE_THRESHOLD
+            for existing in kept
+        )
+        if not is_duplicate:
+            kept.append(word)
+    return kept
 
 
-def group_words_by_line(
-    words: Iterable[OcrWord],
-    *,
-    max_horizontal_gap: int = 32,
-    max_vertical_gap: int = 8,
-    max_wrapped_horizontal_gap: int = 24,
-) -> list[OcrLine]:
-    grouped: dict[int, list[OcrWord]] = defaultdict(list)
+def group_words_by_line(words: Iterable[OcrWord], *, max_horizontal_gap: int = MAX_HORIZONTAL_GAP) -> list[OcrLine]:
+    # 1. Bucket words by the OCR line they came from (per tile).
+    grouped: dict[Hashable, list[OcrWord]] = {}
     for word in words:
-        grouped[word.line_id].append(word)
+        grouped.setdefault(word.line_id, []).append(word)
 
+    # 2. Within each bucket, split at large horizontal gaps; each cluster becomes one line.
     lines: list[OcrLine] = []
     for group in grouped.values():
         ordered = sorted(group, key=lambda word: _reading_order_key(word.box))
         clusters: list[list[OcrWord]] = []
         for word in ordered:
-            if not clusters or word.box[0] - clusters[-1][-1].box[2] > max_horizontal_gap:
+            if not clusters:
+                clusters.append([word])
+                continue
+            previous_word = clusters[-1][-1]
+            gap = word.box[0] - previous_word.box[2]
+            if gap > max_horizontal_gap:
                 clusters.append([word])
             else:
                 clusters[-1].append(word)
@@ -257,58 +150,36 @@ def group_words_by_line(
             text = " ".join(word.text for word in cluster)
             confidence = sum(word.confidence for word in cluster) / len(cluster)
             lines.append(OcrLine(text=text, confidence=confidence, box=_union(word.box for word in cluster)))
+    lines.sort(key=lambda line: _reading_order_key(line.box))
 
-    return _merge_wrapped_lines(
-        _merge_inline_neighbor_lines(
-            sorted(lines, key=lambda line: _reading_order_key(line.box)), max_horizontal_gap=max_horizontal_gap
-        ),
-        max_vertical_gap=max_vertical_gap,
-        max_wrapped_horizontal_gap=max_wrapped_horizontal_gap,
-    )
-
-
-def _merge_inline_neighbor_lines(lines: list[OcrLine], *, max_horizontal_gap: int) -> list[OcrLine]:
-    merged: list[OcrLine] = []
+    # 3. Merge fragments sitting on the same row — one label read half-and-half by two tiles.
+    inline_merged: list[OcrLine] = []
     for line in lines:
-        if not merged:
-            merged.append(line)
-            continue
+        previous = inline_merged[-1] if inline_merged else None
+        same_row = previous is not None and _vertical_overlap_ratio(previous.box, line.box) >= 0.55
+        if same_row and _horizontal_gap(previous.box, line.box) <= max_horizontal_gap:
+            inline_merged[-1] = OcrLine(
+                text=f"{previous.text} {line.text}",
+                confidence=(previous.confidence + line.confidence) / 2,
+                box=_union([previous.box, line.box]),
+            )
+        else:
+            inline_merged.append(line)
 
-        previous = merged[-1]
-        same_row = _vertical_overlap_ratio(previous.box, line.box) >= 0.55
-        close_horizontal = _horizontal_gap(previous.box, line.box) <= max_horizontal_gap
-        if same_row and close_horizontal:
-            merged[-1] = _merge_lines(previous, line)
+    # 4. Merge a line into the one directly above it — a label wrapped onto two rows.
+    merged: list[OcrLine] = []
+    for line in inline_merged:
+        previous = merged[-1] if merged else None
+        wraps = previous is not None and 0 <= line.box[1] - previous.box[3] <= MAX_WRAPPED_VERTICAL_GAP
+        if wraps and _horizontal_gap(previous.box, line.box) <= MAX_WRAPPED_HORIZONTAL_GAP:
+            merged[-1] = OcrLine(
+                text=f"{previous.text} {line.text}",
+                confidence=(previous.confidence + line.confidence) / 2,
+                box=_union([previous.box, line.box]),
+            )
         else:
             merged.append(line)
     return merged
-
-
-def _merge_wrapped_lines(
-    lines: list[OcrLine], *, max_vertical_gap: int, max_wrapped_horizontal_gap: int
-) -> list[OcrLine]:
-    merged: list[OcrLine] = []
-    for line in lines:
-        if not merged:
-            merged.append(line)
-            continue
-
-        previous = merged[-1]
-        vertical_gap = line.box[1] - previous.box[3]
-        horizontal_gap = _horizontal_gap(previous.box, line.box)
-        if 0 <= vertical_gap <= max_vertical_gap and horizontal_gap <= max_wrapped_horizontal_gap:
-            merged[-1] = _merge_lines(previous, line)
-        else:
-            merged.append(line)
-    return merged
-
-
-def _merge_lines(first: OcrLine, second: OcrLine) -> OcrLine:
-    return OcrLine(
-        text=f"{first.text} {second.text}",
-        confidence=(first.confidence + second.confidence) / 2,
-        box=_union([first.box, second.box]),
-    )
 
 
 def _union(boxes: Iterable[Box]) -> Box:
@@ -335,13 +206,6 @@ def _vertical_overlap_ratio(first: Box, second: Box) -> float:
     overlap = max(0, bottom - top)
     shortest = max(1, min(first[3] - first[1], second[3] - second[1]))
     return overlap / shortest
-
-
-def _is_duplicate_word(candidate: OcrWord, existing: OcrWord, *, iou_threshold: float) -> bool:
-    return (
-        _normalize(candidate.text) == _normalize(existing.text)
-        and _box_iou(candidate.box, existing.box) >= iou_threshold
-    )
 
 
 def _box_iou(first: Box, second: Box) -> float:
