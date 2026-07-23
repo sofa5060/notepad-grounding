@@ -106,11 +106,11 @@ def test_automate_post_closes_unverified_app_without_typing(monkeypatch, tmp_pat
     save_file.assert_not_called()
 
 
-def test_click_icon_aborts_when_unverified_app_does_not_close(monkeypatch, tmp_path):
+def test_open_app_aborts_when_unverified_app_does_not_close(monkeypatch, tmp_path):
     configure_click(monkeypatch, verdict=llm.AppOpenReview(opened_expected_app=False), window_changes=[True, False])
 
     with pytest.raises(automation.AppCloseTimeoutError):
-        automation.click_icon(x=100, y=200, expected_app="Windows Notepad", output_dir=tmp_path)
+        automation.open_app(x=100, y=200, expected_app="Windows Notepad", output_dir=tmp_path)
 
 
 def test_main_retries_recoverable_verification_failure(monkeypatch, tmp_path):

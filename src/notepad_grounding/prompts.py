@@ -12,7 +12,7 @@ def build_locate_prompt(*, query: str, width: int, height: int) -> str:
         Use x and y for the center of the icon graphic.
         Use bbox for only the visible icon graphic area, not the text label.
     """.strip()
-    # Absent-target escape hatch — comment out the next line to force a confident pick.
+
     prompt += "\nIf you are sure the target icon is not visible anywhere on this screenshot, set confidence to 0.0."
     return prompt
 

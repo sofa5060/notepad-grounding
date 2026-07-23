@@ -66,12 +66,9 @@ def locate_icon(*, query: str, output_dir: Path) -> IconLocation | None:
         logger.warning("confidence below threshold (%.2f < %.2f)", raw.confidence, MIN_CONFIDENCE)
         return None
 
-    x = max(0, min(raw.x, width - 1))
-    y = max(0, min(raw.y, height - 1))
-    left = max(0, min(raw.bbox.left, width - 1))
-    top = max(0, min(raw.bbox.top, height - 1))
-    right = max(left, min(raw.bbox.right, width - 1))
-    bottom = max(top, min(raw.bbox.bottom, height - 1))
+    (x, y, left, top, right, bottom) = _clamp_to_screen(
+        raw.x, raw.y, raw.bbox.left, raw.bbox.top, raw.bbox.right, raw.bbox.bottom, width=width, height=height
+    )
 
     result = IconLocation(
         x=x,
@@ -84,6 +81,18 @@ def locate_icon(*, query: str, output_dir: Path) -> IconLocation | None:
     save_artifacts(image=image, result=result, query=query, output_dir=output_dir)
 
     return result
+
+
+def _clamp_to_screen(
+    x: int, y: int, left: int, top: int, right: int, bottom: int, *, width: int, height: int
+) -> tuple[int, int, int, int, int, int]:
+    x = max(0, min(x, width - 1))
+    y = max(0, min(y, height - 1))
+    left = max(0, min(left, width - 1))
+    top = max(0, min(top, height - 1))
+    right = max(left, min(right, width - 1))
+    bottom = max(top, min(bottom, height - 1))
+    return (x, y, left, top, right, bottom)
 
 
 def verify_app_opened(

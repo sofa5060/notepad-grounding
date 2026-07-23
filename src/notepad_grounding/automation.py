@@ -31,11 +31,15 @@ class AppCloseTimeoutError(RuntimeError):
     pass
 
 
-def click_icon(*, x: int, y: int, expected_app: str, output_dir: Path) -> None:
+def open_app(*, x: int, y: int, expected_app: str, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Screenshot before clicking.
     before_image = capture_desktop()
     before_image.save(output_dir / "open-before.png")
     before_windows = visible_window_handles()
+
+    # 2. Click the icon and wait for the app to open.
     pyautogui.moveTo(x, y, duration=0.3)
     pyautogui.doubleClick()
     opened = wait_for_visible_window_change(before_windows, action="open", timeout_seconds=WINDOW_OPEN_TIMEOUT_SECONDS)
@@ -44,8 +48,11 @@ def click_icon(*, x: int, y: int, expected_app: str, output_dir: Path) -> None:
             f"Timed out after {WINDOW_OPEN_TIMEOUT_SECONDS:.1f}s waiting for {expected_app} to open"
         )
 
+    # 3. Screenshot after opening.
     after_image = capture_desktop()
     after_image.save(output_dir / "open-after.png")
+
+    # 4. Review: visually verify the expected app opened; close it if not.
     review = verify_app_opened(expected_app=expected_app, before_image=before_image, after_image=after_image)
     if review is not None:
         (output_dir / "open-verification.json").write_text(review.model_dump_json(indent=2), encoding="utf-8")
@@ -113,7 +120,7 @@ def automate_post(
     body = str(post.get("body", "")).strip()
     content = f"Title: {title}\n\n{body}"
 
-    click_icon(x=click_x, y=click_y, expected_app=expected_app, output_dir=output_dir)
+    open_app(x=click_x, y=click_y, expected_app=expected_app, output_dir=output_dir)
     type_content(content=content)
     save_file(full_path=full_path)
     close_notepad()
