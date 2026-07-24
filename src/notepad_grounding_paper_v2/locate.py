@@ -10,8 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from notepad_grounding_paper_v2 import llm
 
-FIRST_GRID = (3, 4)
-LATER_GRID = (3, 3)
+ZOOM_GRID = (3, 4)
 ZOOM_ROUNDS = 3
 CROP_PADDING = 40
 FINAL_CROP_MAX_SIZE = (450, 350)
@@ -193,8 +192,7 @@ def run_locate(image: Image.Image, *, query: str, output_root: Path, timestamp: 
         if width <= FINAL_CROP_MAX_SIZE[0] and height <= FINAL_CROP_MAX_SIZE[1]:
             break
         crop = image.crop(current_box)
-        (grid_rows, grid_cols) = FIRST_GRID if round_index == 1 else LATER_GRID
-        cells = build_grid_cells((0, 0, crop.width, crop.height), rows=grid_rows, cols=grid_cols)
+        cells = build_grid_cells((0, 0, crop.width, crop.height), rows=ZOOM_GRID[0], cols=ZOOM_GRID[1])
         cell = _choose_reviewed_cell(
             crop=crop, cells=cells, query=query, style="zoom", output_dir=output_dir, tag=f"{round_index:02d}"
         )
