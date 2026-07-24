@@ -4,6 +4,7 @@ from PIL import Image
 from notepad_grounding_paper_v2 import llm
 from notepad_grounding_paper_v2 import locate
 from notepad_grounding_paper_v2.models import CellChoice
+from notepad_grounding_paper_v2.models import TargetReview
 
 
 def test_choose_cell_retries_on_invalid_cell_id(monkeypatch):
@@ -100,3 +101,60 @@ def test_draw_functions_write_artifacts(tmp_path):
     assert click.size == (128, 128)  # gutter=28 added on both axes
     assert marker.size == (100, 100)
     assert (tmp_path / "grid.png").exists() and (tmp_path / "click.png").exists() and (tmp_path / "marker.png").exists()
+
+
+def fake_first_valid_choice(*, query, image, cell_ids, rejected=(), reviewer_rationale="", style="zoom"):
+    cell_id = next(c for c in cell_ids if c not in rejected)
+    return CellChoice(cell_id=cell_id, confidence=0.9, rationale="pick first non-rejected")
+
+
+def test_choose_reviewed_cell_retries_with_rejections(monkeypatch, tmp_path):
+    cells = locate.build_grid_cells((0, 0, 100, 100), rows=2, cols=2)
+    rejected_seen = []
+
+    def tracking_choose(*, query, image, cell_ids, rejected=(), reviewer_rationale="", style="zoom"):
+        rejected_seen.append(list(rejected))
+        return fake_first_valid_choice(
+            query=query, image=image, cell_ids=cell_ids, rejected=rejected, reviewer_rationale=reviewer_rationale
+        )
+
+    reviews = [
+        TargetReview(contains_target=False, confidence=0.8, rationale="empty cell"),
+        TargetReview(contains_target=True, confidence=0.9, rationale="icon visible"),
+    ]
+    monkeypatch.setattr(llm, "choose_cell", tracking_choose)
+    monkeypatch.setattr(llm, "review_target", lambda **kwargs: reviews.pop(0))
+
+    cell = locate._choose_reviewed_cell(
+        crop=Image.new("RGB", (100, 100)), cells=cells, query="Notepad", style="zoom", output_dir=tmp_path, tag="01"
+    )
+    assert cell.id == "R1C2"
+    assert rejected_seen == [[], ["R1C1"]]
+
+
+def test_choose_reviewed_cell_raises_when_reviewer_never_approves(monkeypatch, tmp_path):
+    cells = locate.build_grid_cells((0, 0, 100, 100), rows=2, cols=2)
+    monkeypatch.setattr(llm, "choose_cell", fake_first_valid_choice)
+    monkeypatch.setattr(
+        llm, "review_target", lambda **kwargs: TargetReview(contains_target=False, confidence=0.9, rationale="nope")
+    )
+    with pytest.raises(ValueError, match="rejected all attempts"):
+        locate._choose_reviewed_cell(
+            crop=Image.new("RGB", (100, 100)), cells=cells, query="Notepad", style="zoom", output_dir=tmp_path, tag="01"
+        )
+
+
+def test_run_locate_returns_screen_point_and_artifacts(monkeypatch, tmp_path):
+    monkeypatch.setattr(llm, "choose_cell", fake_first_valid_choice)
+    monkeypatch.setattr(
+        llm, "review_target", lambda **kwargs: TargetReview(contains_target=True, confidence=0.9, rationale="ok")
+    )
+    image = Image.new("RGB", (1200, 800))
+    (x, y) = locate.run_locate(image, query="Notepad", output_root=tmp_path, timestamp="test-run")
+    assert 0 <= x < 1200 and 0 <= y < 800
+    run_dir = tmp_path / "test-run"
+    assert (run_dir / "00-source.png").exists()
+    assert (run_dir / "01-grid.png").exists() and (run_dir / "01-selected.png").exists()
+    assert (run_dir / "final-crop.png").exists()
+    assert (run_dir / "click-01-grid.png").exists() and (run_dir / "click-02-grid.png").exists()
+    assert (run_dir / "click-point-full.png").exists()

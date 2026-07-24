@@ -147,3 +147,83 @@ def draw_click_marker(image: Image.Image, *, point: tuple[int, int], output_path
     draw.line((x, y - 14, x, y + 14), fill=red, width=5)
     draw.ellipse((x - 7, y - 7, x + 7, y + 7), outline=red, width=4)
     return _save(annotated, output_path)
+
+
+def _choose_reviewed_cell(*, crop, cells, query, style, output_dir, tag, max_retries=MAX_REVIEW_RETRIES) -> GridCell:
+    """One grid round: the LLM picks a cell, the reviewer must approve the highlighted pick.
+
+    On rejection, re-asks with the rejected cells excluded and the reviewer's rationale in the prompt.
+    Raises ValueError when the reviewer rejects every attempt.
+    """
+    draw = draw_grid if style == "zoom" else draw_click_grid
+    overlay = draw(crop, cells, output_path=output_dir / f"{tag}-grid.png")
+    cell_ids = [cell.id for cell in cells]
+    (rejected, rationale) = ([], "")
+    for _ in range(max_retries + 1):
+        choice = llm.choose_cell(
+            query=query, image=overlay, cell_ids=cell_ids, rejected=rejected, reviewer_rationale=rationale, style=style
+        )
+        highlighted = draw(crop, cells, output_path=output_dir / f"{tag}-selected.png", selected_cell_id=choice.cell_id)
+        review = llm.review_target(query=query, image=highlighted)
+        if review.contains_target:
+            logger.info("%s: chose cell %s (confidence %.2f)", tag, choice.cell_id, choice.confidence)
+            return cell_by_id(cells, choice.cell_id)
+        rejected.append(choice.cell_id)
+        rationale = review.rationale
+        logger.info("%s: reviewer rejected %s: %s", tag, choice.cell_id, review.rationale)
+    raise ValueError(f"Target reviewer rejected all attempts for {tag}; rejected={rejected}; last_rationale={rationale}")
+
+
+def run_locate(image: Image.Image, *, query: str, output_root: Path, timestamp: str | None = None, rounds: int = ZOOM_ROUNDS) -> tuple[int, int]:
+    """Find the screen coordinates of `query` (e.g. the Notepad icon) in `image`.
+
+    Zooms in with LLM-guided, reviewer-approved grid choices, then refines to an
+    exact pixel with a coarse and a fine click grid. Saves artifacts per stage.
+    """
+    start = time.perf_counter()
+    run_id = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
+    output_dir = output_root / run_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    image.convert("RGB").save(output_dir / "00-source.png")
+
+    bounds: Box = (0, 0, image.width, image.height)
+    current_box = bounds
+    for round_index in range(1, rounds + 1):
+        (width, height) = (current_box[2] - current_box[0], current_box[3] - current_box[1])
+        if width <= FINAL_CROP_MAX_SIZE[0] and height <= FINAL_CROP_MAX_SIZE[1]:
+            break
+        crop = image.crop(current_box)
+        (grid_rows, grid_cols) = FIRST_GRID if round_index == 1 else LATER_GRID
+        cells = build_grid_cells((0, 0, crop.width, crop.height), rows=grid_rows, cols=grid_cols)
+        cell = _choose_reviewed_cell(
+            crop=crop, cells=cells, query=query, style="zoom", output_dir=output_dir, tag=f"{round_index:02d}"
+        )
+        selected = offset_box(cell.box, offset=current_box[:2])
+        current_box = expand_box(selected, padding=CROP_PADDING, bounds=bounds)
+
+    final_crop = image.crop(current_box)
+    final_crop.save(output_dir / "final-crop.png")
+
+    coarse = _choose_reviewed_cell(
+        crop=final_crop,
+        cells=build_grid_cells((0, 0, final_crop.width, final_crop.height), rows=COARSE_CLICK_GRID[0], cols=COARSE_CLICK_GRID[1]),
+        query=query,
+        style="click",
+        output_dir=output_dir,
+        tag="click-01",
+    )
+    (fine_crop, fine_box) = crop_around_point(final_crop, center=coarse.center, size=FINE_CROP_SIZE)
+    fine = _choose_reviewed_cell(
+        crop=fine_crop,
+        cells=build_grid_cells((0, 0, fine_crop.width, fine_crop.height), rows=FINE_CLICK_GRID[0], cols=FINE_CLICK_GRID[1]),
+        query=query,
+        style="click",
+        output_dir=output_dir,
+        tag="click-02",
+    )
+
+    point_in_final = (fine.center[0] + fine_box[0], fine.center[1] + fine_box[1])
+    screen_point = (point_in_final[0] + current_box[0], point_in_final[1] + current_box[1])
+    draw_click_marker(image, point=screen_point, output_path=output_dir / "click-point-full.png")
+    logger.info("located %r at %s in %.2fs; artifacts in %s", query, screen_point, time.perf_counter() - start, output_dir)
+    return screen_point
