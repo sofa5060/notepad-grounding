@@ -1,10 +1,10 @@
 import pytest
 from PIL import Image
 
-from notepad_grounding_paper_v2 import llm
-from notepad_grounding_paper_v2 import locate
-from notepad_grounding_paper_v2.models import CellChoice
-from notepad_grounding_paper_v2.models import TargetReview
+from notepad_grounding_paper import llm
+from notepad_grounding_paper import locate
+from notepad_grounding_paper.models import CellChoice
+from notepad_grounding_paper.models import TargetReview
 
 
 def test_choose_cell_retries_on_invalid_cell_id(monkeypatch):

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pyautogui
 
-from notepad_grounding_paper_v2 import llm
+from notepad_grounding_paper import llm
 
 logger = logging.getLogger(__name__)
 

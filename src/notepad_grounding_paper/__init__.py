@@ -1,1 +1,1 @@
-__version__ = "0.1.0"
+"""Paper flow v2: grid-zoom visual grounding, rewritten as flat modules."""

@@ -1,81 +1,73 @@
 from __future__ import annotations
 
-import argparse
 import logging
+import os
+import shutil
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 
-from notepad_grounding_paper.flow import run_flow
+from dotenv import load_dotenv
+
+from notepad_grounding_paper.api import fetch_posts
+from notepad_grounding_paper.automation import automate_post
+from notepad_grounding_paper.llm import capture_desktop
+from notepad_grounding_paper.locate import run_locate
+
+QUERY = "Notepad"
+POST_LIMIT = 10
+POST_ATTEMPTS = 3
+RETRY_DELAY_SECONDS = 1.0
+OUTPUT_ROOT = Path("output/notepad_grounding_paper")
+TARGET_DIR = Path.home() / "Desktop" / "tjm-project"
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 
-def _setup_logging() -> None:
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setLevel(logging.INFO)
-    handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
-    if not root.handlers:
-        root.addHandler(handler)
+def reset_target_directory(target_dir: Path) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for path in target_dir.iterdir():
+        if path.is_file():
+            path.unlink()
+        elif path.is_dir():
+            shutil.rmtree(path)
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="notepad-grounding", description="Vision-based Windows desktop icon grounding and automation."
-    )
-    parser.add_argument("--query", default="Notepad", help="Visible target query. Defaults to Notepad.")
+def main() -> None:
+    load_dotenv()
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY is required. Add it to .env or set it in the shell.")
 
-    subparsers = parser.add_subparsers(dest="command", metavar="[command]")
-    subparsers.default = "run"
-    parser.set_defaults(command="run")
-    locate = subparsers.add_parser("locate", help="Debug: locate a desktop icon without running automation.")
-    locate.add_argument("--query", default="Notepad", help="Visible target query. Defaults to Notepad.")
-    return parser
+    if "locate" in sys.argv[1:]:
+        center = run_locate(capture_desktop(), query=QUERY, output_root=OUTPUT_ROOT / "locate")
+        print(f"center={center[0]},{center[1]}")
+        return
 
+    run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
+    output_dir = OUTPUT_ROOT / "automation" / run_id
+    reset_target_directory(TARGET_DIR)
+    posts = fetch_posts(limit=POST_LIMIT)
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    return start_flow(args)
+    succeeded = 0
+    for post in posts:
+        for attempt in range(1, POST_ATTEMPTS + 1):
+            try:
+                center = run_locate(capture_desktop(), query=QUERY, output_root=output_dir / "locate")
+                full_path = automate_post(post=post, query=QUERY, center=center, target_dir=TARGET_DIR)
+                logger.info("[post %s] saved to %s", post["id"], full_path)
+                succeeded += 1
+                break
+            except Exception as exc:
+                logger.warning("[post %s] attempt %d/%d failed: %s", post["id"], attempt, POST_ATTEMPTS, exc)
+                if attempt < POST_ATTEMPTS:
+                    time.sleep(RETRY_DELAY_SECONDS)
+        else:
+            logger.error("[post %s] all %d attempts failed", post["id"], POST_ATTEMPTS)
 
-
-def start_flow(args: argparse.Namespace) -> int:
-    _setup_logging()
-    try:
-        result = run_flow(
-            mode=args.command,
-            query=args.query,
-            output_root=Path("output"),
-            max_retries=3,
-            retry_delay=1.0,
-            post_limit=10,
-            llm_rounds=3,
-        )
-
-        if args.command == "locate":
-            _print_locate_result(result)
-            return 0
-
-        _print_automation_result(result)
-        return 0
-    except Exception as exc:
-        print(f"error: {exc}")
-        return 3
-
-
-def _print_automation_result(result) -> None:
-    print("flow=automation")
-    print(f"output_dir={result.output_dir}")
-    print(f"total_posts={result.total_posts}")
-    print(f"succeeded={result.succeeded}")
-    print(f"failed={result.failed}")
-
-
-def _print_locate_result(result) -> None:
-    print("flow=locate")
-    print(f"output_dir={result.output_dir}")
-    print("found=true")
-    print(f"center={result.center[0]},{result.center[1]}")
+    logger.info("done: %d/%d posts succeeded", succeeded, len(posts))
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

@@ -23,7 +23,6 @@ dependencies = [
 [project.scripts]
 notepad-grounding = "notepad_grounding.main:main"
 notepad-grounding-paper = "notepad_grounding_paper.main:main"
-notepad-grounding-paper-v2 = "notepad_grounding_paper_v2.main:main"
 grid-ocr = "grid_ocr.main:main"
 
 [dependency-groups]
