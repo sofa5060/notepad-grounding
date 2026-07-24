@@ -20,7 +20,8 @@ POST_LIMIT = 10
 POST_ATTEMPTS = 3
 RETRY_DELAY_SECONDS = 1.0
 OUTPUT_ROOT = Path("output/notepad_grounding_paper")
-TARGET_DIR = Path.home() / "Desktop" / "tjm-project"
+# TARGET_DIR = Path.home() / "Desktop" / "tjm-project"
+TARGET_DIR = Path("C:/Mac/Home/Desktop/tjm-project")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
